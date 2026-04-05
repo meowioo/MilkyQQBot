@@ -117,7 +117,8 @@ public static class IncomingMessageService
                     SenderId = senderId,
                     PeerId = peerId,
                     Command = fullMessage.TrimStart(),
-                    SenderRole = role
+                    SenderRole = role,
+                    MessageSeq = messageSeq
                 };
 
                 await commandHandler.ExecuteAsync(context);

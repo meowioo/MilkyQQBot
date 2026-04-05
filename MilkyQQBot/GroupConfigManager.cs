@@ -13,6 +13,8 @@ public class GroupFeatureConfig
     
     // 群 AI 聊天开关，默认关闭
     public bool AiChatEnabled { get; set; } = false; 
+    
+    public bool GameEnabled { get; set; } = false;
 }
 
 public static class GroupConfigManager
@@ -84,5 +86,18 @@ public static class GroupConfigManager
         config.AiChatEnabled = !config.AiChatEnabled;
         Save();
         return config.AiChatEnabled;
+    }
+    
+    public static bool IsGameEnabled(long groupId)
+    {
+        return GetConfig(groupId).GameEnabled;
+    }
+
+    public static bool ToggleGame(long groupId)
+    {
+        var config = GetConfig(groupId);
+        config.GameEnabled = !config.GameEnabled;
+        Save();
+        return config.GameEnabled;
     }
 }

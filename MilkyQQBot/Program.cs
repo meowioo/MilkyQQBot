@@ -2,12 +2,14 @@
 using MilkyQQBot;
 using MilkyQQBot.Commands;
 using MilkyQQBot.Events;
+using MilkyQQBot.Game;
 using MilkyQQBot.Services;
 
 Console.WriteLine("正在初始化 Milky 机器人客户端...");
 
 // 初始化数据库与群配置
 DatabaseManager.Initialize();
+GameRepository.Initialize();
 GroupConfigManager.Load();
 
 // 从配置读取
@@ -32,6 +34,7 @@ CommandHandler commandHandler = new();
 BasicCommands.Register(commandHandler, milky);
 SteamCommands.Register(commandHandler, milky);
 FunCommands.Register(commandHandler, milky, state);
+GameCommands.Register(commandHandler, milky);
 
 // 注册事件
 BotEventRegistrar.Register(milky, commandHandler, state);

@@ -13,6 +13,8 @@ public class CommandContext
     public string[] Args { get; set; }     // 指令参数，比如 "/roll 100" -> Args[0] 就是 "100"
     public string SenderRole { get; set; } //发送者在群里的角色权限
     
+    public long MessageSeq { get; set; } // 当前这条指令消息的序列号，用于 reply 引用回复
+    
     
     private async Task SendSegmentsAsync(params OutgoingSegment[] segments)
     {
@@ -65,6 +67,56 @@ public class CommandContext
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"[图片发送失败] {ex.Message}");
+            Console.ResetColor();
+        }
+    }
+    
+    // ==========================================
+    // 封装一个@ 回复方法
+    // ==========================================
+    public async Task SendMentionTextAsync(long userId, string text)
+    {
+        try
+        {
+            var mentionSegment = new OutgoingSegment<MentionOutgoingSegmentData>(
+                new MentionOutgoingSegmentData(userId)
+            );
+
+            var textSegment = new OutgoingSegment<TextOutgoingSegmentData>(
+                new TextOutgoingSegmentData(" " + text)
+            );
+
+            await SendSegmentsAsync(mentionSegment, textSegment);
+
+            Console.WriteLine($"[@消息已发送] -> {Scene}:{PeerId} | @{userId} {text}");
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[@消息发送失败] {ex.Message}");
+            Console.ResetColor();
+        }
+    }
+    
+    // 封装一个引用回复方法
+    public async Task ReplyReplyAsync(string text)
+    {
+        try
+        {
+            var replySegment = new OutgoingSegment<ReplyOutgoingSegmentData>(
+                new ReplyOutgoingSegmentData(MessageSeq)
+            );
+
+            var textSegment = new OutgoingSegment<TextOutgoingSegmentData>(
+                new TextOutgoingSegmentData(text)
+            );
+
+            await SendSegmentsAsync(replySegment, textSegment);
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[回复发送失败] {ex.Message}");
             Console.ResetColor();
         }
     }
