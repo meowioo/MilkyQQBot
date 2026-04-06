@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MilkyQQBot")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+29b9e52eb78c34fd349d674854684ed6321174c6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9d6ba1a523a84fc3457d680b44192240f024f23c")]
 [assembly: System.Reflection.AssemblyProductAttribute("MilkyQQBot")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MilkyQQBot")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

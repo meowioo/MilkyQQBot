@@ -108,7 +108,7 @@ public static class GameCommands
 
             player.Nickname = displayName;
 
-            int roll = Random.Shared.Next(0, 6);
+            int roll = Random.Shared.Next(0, 5);
 
             var messages = new List<string>();
 

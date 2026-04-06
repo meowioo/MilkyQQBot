@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS GamePlayers (
     MaxHP     INTEGER NOT NULL DEFAULT 100,
     ATK       INTEGER NOT NULL DEFAULT 10,
     DEF       INTEGER NOT NULL DEFAULT 5,
-    Gold      INTEGER NOT NULL DEFAULT 0,
+    Gold      INTEGER NOT NULL DEFAULT 10,
     JoinTime  TEXT    NOT NULL,
     PRIMARY KEY (GroupId, UserId)
 );
@@ -44,11 +44,12 @@ CREATE INDEX IF NOT EXISTS idx_game_players_group ON GamePlayers(GroupId);
 INSERT OR IGNORE INTO GamePlayers
 (GroupId, UserId, Nickname, Step, Direction, HP, MaxHP, ATK, DEF, Gold, JoinTime)
 VALUES
-(@GroupId, @UserId, @Nickname, 0, 1, 100, 100, 10, 5, 0, @JoinTime);
+(@GroupId, @UserId, @Nickname, 0, 1, 100, 100, 10, 5, @Gold, @JoinTime);
 ";
         command.Parameters.AddWithValue("@GroupId", groupId);
         command.Parameters.AddWithValue("@UserId", userId);
         command.Parameters.AddWithValue("@Nickname", nickname);
+        command.Parameters.AddWithValue("@Gold", GameBalance.InitialGold);
         command.Parameters.AddWithValue("@JoinTime", DateTime.Now.ToString("O"));
 
         return command.ExecuteNonQuery() > 0;
