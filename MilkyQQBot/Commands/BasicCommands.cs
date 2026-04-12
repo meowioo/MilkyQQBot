@@ -33,7 +33,8 @@ public static class BasicCommands
                               "/csgo开箱 - 免费体验穷鬼武器箱开奖\n" +
                               "/l4d2 - 查询求生之路2幸存者档案(查自己，或加 @群友 查别人)\n" +
                               "/头像鉴定 - 赛博鉴定头像(鉴定自己，或加 @群友 查别人)\n" +
-                              "/头像pk - 赛博头像pk(自己和被@的人pk，或加 @群友A 和 @群友B pk)";
+                              "/头像pk - 赛博头像pk(自己和被@的人pk，或加 @群友A 和 @群友B pk)" +
+                              "/news - [管理员/群主] 开启或关闭 Telegram 频道订阅\n";
 
             try
             {
@@ -233,6 +234,32 @@ public static class BasicCommands
             else
             {
                 await context.ReplyAsync("❌ 已关闭本群 AI 聊天功能。");
+            }
+        });
+        
+        commandHandler.RegisterCommand("/news", async (context) =>
+        {
+            if (context.Scene != "group")
+            {
+                await context.ReplyAsync("⚠️ 该指令只能在群聊中使用哦！");
+                return;
+            }
+
+            if (context.SenderRole != "Owner" && context.SenderRole != "Admin")
+            {
+                await context.ReplyAsync("⚠️ 权限不足！该指令仅限群主或管理员使用。");
+                return;
+            }
+
+            bool isNowEnabled = GroupConfigManager.ToggleTelegramNews(context.PeerId);
+
+            if (isNowEnabled)
+            {
+                await context.ReplyAsync("✅ 已开启 Telegram 频道订阅。后续频道有新消息时，机器人会自动同步到本群。");
+            }
+            else
+            {
+                await context.ReplyAsync("❌ 已关闭 Telegram 频道订阅。");
             }
         });
         

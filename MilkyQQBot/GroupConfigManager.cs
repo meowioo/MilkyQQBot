@@ -1,7 +1,8 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
-using System.IO;
 using System;
+using System.Collections.Concurrent;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 
 namespace MilkyQQBot;
 
@@ -10,20 +11,22 @@ public class GroupFeatureConfig
 {
     // 防撤回开关，默认关闭
     public bool AntiRecallEnabled { get; set; } = false;
-    
+
     // 群 AI 聊天开关，默认关闭
-    public bool AiChatEnabled { get; set; } = false; 
-    
+    public bool AiChatEnabled { get; set; } = false;
+
     public bool GameEnabled { get; set; } = false;
+
+    // Telegram 频道订阅开关，默认关闭
+    public bool TelegramNewsEnabled { get; set; } = false;
 }
 
 public static class GroupConfigManager
 {
     private const string ConfigPath = "group_configs.json";
-    
     private static ConcurrentDictionary<long, GroupFeatureConfig> _configs = new();
-    
-    // 【核心修复】引入文件读写排他锁，防止高并发下触发 IOException
+
+    // 文件读写排他锁
     private static readonly object _fileLock = new();
 
     public static void Load()
@@ -32,18 +35,17 @@ public static class GroupConfigManager
         {
             try
             {
-                // 读取时也加锁，防止读取瞬间正好有其他线程在写入
                 lock (_fileLock)
                 {
                     var json = File.ReadAllText(ConfigPath);
                     _configs = JsonSerializer.Deserialize<ConcurrentDictionary<long, GroupFeatureConfig>>(json) ?? new();
                 }
+
                 Console.WriteLine("[系统] 群配置文件加载成功。");
             }
-            catch (Exception ex) 
-            { 
-                // 【优化】不要吞掉错误信息，打印出来方便排查是否是 JSON 格式损坏
-                Console.WriteLine($"[系统] 群配置文件解析失败，将使用默认配置。原因: {ex.Message}"); 
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[系统] 群配置文件解析失败，将使用默认配置。原因: {ex.Message}");
             }
         }
     }
@@ -52,10 +54,11 @@ public static class GroupConfigManager
     {
         try
         {
-            // 序列化可以在锁外面做，不影响性能
-            var json = JsonSerializer.Serialize(_configs, new JsonSerializerOptions { WriteIndented = true });
-            
-            // 【核心修复】加锁，确保同一时刻绝对只有一个线程能执行写入操作
+            var json = JsonSerializer.Serialize(_configs, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
             lock (_fileLock)
             {
                 File.WriteAllText(ConfigPath, json);
@@ -76,7 +79,7 @@ public static class GroupConfigManager
     {
         var config = GetConfig(groupId);
         config.AntiRecallEnabled = !config.AntiRecallEnabled;
-        Save(); 
+        Save();
         return config.AntiRecallEnabled;
     }
 
@@ -87,7 +90,7 @@ public static class GroupConfigManager
         Save();
         return config.AiChatEnabled;
     }
-    
+
     public static bool IsGameEnabled(long groupId)
     {
         return GetConfig(groupId).GameEnabled;
@@ -99,5 +102,21 @@ public static class GroupConfigManager
         config.GameEnabled = !config.GameEnabled;
         Save();
         return config.GameEnabled;
+    }
+
+    public static bool ToggleTelegramNews(long groupId)
+    {
+        var config = GetConfig(groupId);
+        config.TelegramNewsEnabled = !config.TelegramNewsEnabled;
+        Save();
+        return config.TelegramNewsEnabled;
+    }
+
+    public static IReadOnlyCollection<long> GetTelegramNewsEnabledGroupIds()
+    {
+        return _configs
+            .Where(x => x.Value.TelegramNewsEnabled)
+            .Select(x => x.Key)
+            .ToArray();
     }
 }

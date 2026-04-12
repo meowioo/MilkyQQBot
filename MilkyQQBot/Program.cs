@@ -41,6 +41,7 @@ BotEventRegistrar.Register(milky, commandHandler, state);
 
 // 接入定时任务
 BotScheduler.StartMorningNightRoutine(milky);
+TelegramNewsService.Start(milky);
 
 try
 {
