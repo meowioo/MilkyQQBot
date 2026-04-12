@@ -85,79 +85,95 @@ public static class GameCommands
         });
 
         commandHandler.RegisterCommand("/go", async context =>
+{
+    if (!await EnsureGameEnabledAsync(context))
+    {
+        return;
+    }
+
+    var players = GameRepository.GetPlayers(context.PeerId);
+    var player = players.FirstOrDefault(p => p.UserId == context.SenderId);
+
+    if (player is null)
+    {
+        await context.ReplyReplyAsync("你还没加入游戏。");
+        return;
+    }
+
+    string displayName = await GroupMemberHelper.GetDisplayNameAsync(
+        milky,
+        context.PeerId,
+        context.SenderId,
+        player.Nickname);
+
+    player.Nickname = displayName;
+
+    // 注意：Next(0, 6) 才会得到 0~5
+    int roll = Random.Shared.Next(0, 6);
+
+    var messages = new List<string>();
+
+    if (roll == 0)
+    {
+        messages.Add("🎲 你走了 0 步，原地摸鱼了一会儿。");
+        messages.Add($"📍 当前位于第 {player.Step} 步。");
+        messages.Add($"🪙 当前金币：{player.Gold}");
+        messages.Add($"❤️ 当前生命：{player.HP}/{player.MaxHP}");
+    }
+    else
+    {
+        // 1. 先正常移动
+        MovePlayer(player, roll);
+        messages.Add($"🎲 你走了 {roll} 步，来到了第 {player.Step} 步。");
+
+        // 2. 特殊格触发（金币 / 随机事件 / 战斗，三选一）
+        if (GameSpecialCells.GoldSteps.Contains(player.Step))
         {
-            if (!await EnsureGameEnabledAsync(context))
+            string goldMessage = GameEventEngine.TriggerGoldCell(player);
+            messages.Add(goldMessage);
+        }
+        else if (GameSpecialCells.RandomEventSteps.Contains(player.Step))
+        {
+            var eventResult = GameEventEngine.TriggerRandomEvent(player, players);
+            messages.Add(eventResult.Message);
+        }
+        else if (GameBattleBalance.BattleSteps.Contains(player.Step))
+        {
+            // 战斗系统：
+            // - 玩家先手
+            // - 固定伤害公式
+            // - 失败回起点并扣金币
+            var battleResult = GameBattleEngine.TriggerBattle(player);
+            messages.AddRange(battleResult.Logs);
+        }
+
+        // 3. 如果战斗失败回起点了，就不要再触发遇见
+        if (player.HP > 0 && player.Step != 0)
+        {
+            string? encounterMessage = GameEventEngine.TryTriggerEncounter(player, players);
+            if (!string.IsNullOrWhiteSpace(encounterMessage))
             {
-                return;
+                messages.Add(encounterMessage);
             }
+        }
 
-            var players = GameRepository.GetPlayers(context.PeerId);
-            var player = players.FirstOrDefault(p => p.UserId == context.SenderId);
+        // 4. 最终状态汇总
+        messages.Add($"📍 最终位于第 {player.Step} 步。");
+        messages.Add($"🪙 当前金币：{player.Gold}");
+        messages.Add($"❤️ 当前生命：{player.HP}/{player.MaxHP}");
+    }
 
-            if (player is null)
-            {
-                await context.ReplyReplyAsync("你还没加入游戏。");
-                return;
-            }
+    // 5. 统一保存本群玩家
+    // 因为随机事件 / 遇见 / 战斗都可能影响别的玩家或当前玩家状态，
+    // 所以这里最稳的做法是把本群玩家全部 Update 一次。
+    foreach (var p in players)
+    {
+        GameRepository.UpdatePlayer(p);
+    }
 
-            string displayName = await GroupMemberHelper.GetDisplayNameAsync(
-                milky,
-                context.PeerId,
-                context.SenderId,
-                player.Nickname);
-
-            player.Nickname = displayName;
-
-            int roll = Random.Shared.Next(0, 5);
-
-            var messages = new List<string>();
-
-            if (roll == 0)
-            {
-                messages.Add("🎲 你走了 0 步，原地摸鱼了一会儿。");
-                messages.Add($"📍 当前位于第 {player.Step} 步。");
-                messages.Add($"🪙 当前金币：{player.Gold}");
-            }
-            else
-            {
-                // 1. 先正常移动
-                MovePlayer(player, roll);
-                messages.Add($"🎲 你走了 {roll} 步，来到了第 {player.Step} 步。");
-
-                // 2. 金币格 / 随机事件格（二选一）
-                if (GameSpecialCells.GoldSteps.Contains(player.Step))
-                {
-                    string goldMessage = GameEventEngine.TriggerGoldCell(player);
-                    messages.Add(goldMessage);
-                }
-                else if (GameSpecialCells.RandomEventSteps.Contains(player.Step))
-                {
-                    var eventResult = GameEventEngine.TriggerRandomEvent(player, players);
-                    messages.Add(eventResult.Message);
-                }
-
-                // 3. 事件结算后，再检查遇见
-                string? encounterMessage = GameEventEngine.TryTriggerEncounter(player, players);
-                if (!string.IsNullOrWhiteSpace(encounterMessage))
-                {
-                    messages.Add(encounterMessage);
-                }
-
-                // 4. 最终状态汇总
-                messages.Add($"📍 最终位于第 {player.Step} 步。");
-                messages.Add($"🪙 当前金币：{player.Gold}");
-            }
-
-            // 5. 保存
-            // 为了简单稳定，直接保存本群所有玩家，后续你觉得有必要再优化为只保存变更玩家
-            foreach (var p in players)
-            {
-                GameRepository.UpdatePlayer(p);
-            }
-
-            string finalMessage = string.Join("\n", messages);
-            await context.SendMentionTextAsync(context.SenderId, finalMessage);
-        });
+    string finalMessage = string.Join("\n", messages);
+    await context.SendMentionTextAsync(context.SenderId, finalMessage);
+});
 
         commandHandler.RegisterCommand("/look", async context =>
         {

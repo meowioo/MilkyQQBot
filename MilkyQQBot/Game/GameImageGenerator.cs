@@ -33,11 +33,11 @@ public static class GameImageGenerator
     private static readonly List<(string Command, string Desc)> HelpCommands =
         new()
         {
-            ("/game",  "开启 / 关闭本群冒险游戏（仅群主或管理员）"),
-            ("/join",  "加入游戏，创建你的角色并从起点出发"),
-            ("/go",    "行动一次，随机前进 0~4 步，终点会自动折返"),
-            ("/look",  "查看当前地图，显示玩家在地图上的位置"),
-            ("/info",  "查看自己的信息，或 @别人 查看对方信息"),
+            ("/game", "开启 / 关闭本群冒险游戏（仅群主或管理员）"),
+            ("/join", "加入游戏，创建你的角色并从起点出发"),
+            ("/go", "行动一次，随机前进 0~4 步，终点会自动折返"),
+            ("/look", "查看当前地图，显示玩家在地图上的位置"),
+            ("/info", "查看自己的信息，或 @别人 查看对方信息"),
             ("/helpg", "查看这张游戏帮助菜单")
         };
 
@@ -152,115 +152,131 @@ public static class GameImageGenerator
     }
 
     public static async Task<string> GeneratePlayerInfoAsync(GamePlayer player, string displayName)
+{
+    const int width = 820;
+    const int height = 630;
+
+    using var bitmap = new SKBitmap(width, height);
+    using var canvas = new SKCanvas(bitmap);
+
+    SKColor bgColor = SKColor.Parse("#F7F2EA");
+    SKColor cardColor = SKColors.White;
+    SKColor strokeColor = SKColor.Parse("#2D3436");
+    SKColor shadowColor = SKColor.Parse("#E4DBCE");
+    SKColor accentColor = SKColor.Parse("#FFEAA7");
+    SKColor subTextColor = SKColor.Parse("#636E72");
+
+    canvas.Clear(bgColor);
+
+    using var shadowPaint = new SKPaint
     {
-        const int width = 820;
-        const int height = 500;
+        Color = shadowColor,
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+    using var cardPaint = new SKPaint
+    {
+        Color = cardColor,
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+    using var borderPaint = new SKPaint
+    {
+        Color = strokeColor,
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = 3
+    };
+    using var accentPaint = new SKPaint
+    {
+        Color = accentColor,
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+    using var chipPaint = new SKPaint
+    {
+        Color = SKColor.Parse("#FFF7E6"),
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+    using var progressBg = new SKPaint
+    {
+        Color = SKColor.Parse("#ECECEC"),
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
+    using var progressValue = new SKPaint
+    {
+        Color = SKColor.Parse("#74B9FF"),
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill
+    };
 
-        using var bitmap = new SKBitmap(width, height);
-        using var canvas = new SKCanvas(bitmap);
+    using var titlePaint = CreateTextPaint(34, strokeColor, true, SKTextAlign.Left);
+    using var namePaint = CreateTextPaint(30, strokeColor, true, SKTextAlign.Left);
+    using var subPaint = CreateTextPaint(18, subTextColor, false, SKTextAlign.Left);
+    using var labelPaint = CreateTextPaint(20, strokeColor, true, SKTextAlign.Left);
+    using var valuePaint = CreateTextPaint(24, strokeColor, true, SKTextAlign.Left);
 
-        SKColor bgColor = SKColor.Parse("#F7F2EA");
-        SKColor cardColor = SKColors.White;
-        SKColor strokeColor = SKColor.Parse("#2D3436");
-        SKColor shadowColor = SKColor.Parse("#E4DBCE");
-        SKColor accentColor = SKColor.Parse("#FFEAA7");
-        SKColor subTextColor = SKColor.Parse("#636E72");
+    // 外层大卡片
+    canvas.DrawRoundRect(34, 34, width - 68, height - 96, 28, 28, shadowPaint);
+    canvas.DrawRoundRect(28, 28, width - 68, height - 96, 28, 28, cardPaint);
+    canvas.DrawRoundRect(28, 28, width - 68, height - 96, 28, 28, borderPaint);
 
-        canvas.Clear(bgColor);
+    // 顶部标题条
+    canvas.DrawRoundRect(58, 58, width - 116, 76, 20, 20, accentPaint);
+    canvas.DrawRoundRect(58, 58, width - 116, 76, 20, 20, borderPaint);
+    canvas.DrawText("冒险者档案", 82, 108, titlePaint);
 
-        using var shadowPaint = new SKPaint
-        {
-            Color = shadowColor,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-        using var cardPaint = new SKPaint
-        {
-            Color = cardColor,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-        using var borderPaint = new SKPaint
-        {
-            Color = strokeColor,
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 3
-        };
-        using var accentPaint = new SKPaint
-        {
-            Color = accentColor,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
+    // 左侧头像
+    using var avatar = await LoadAvatarAsync(player.UserId, 120);
+    DrawCircularAvatar(canvas, avatar, 84, 162, 120);
 
-        canvas.DrawRoundRect(34, 34, width - 68, height - 82, 28, 28, shadowPaint);
-        canvas.DrawRoundRect(28, 28, width - 68, height - 82, 28, 28, cardPaint);
-        canvas.DrawRoundRect(28, 28, width - 68, height - 82, 28, 28, borderPaint);
+    // 左侧基础信息
+    string statusText = player.HP <= 0 ? "【重伤】" : (player.IsWounded ? "【虚弱】" : "【正常】");
+    canvas.DrawText(displayName, 236, 228, namePaint);
+    canvas.DrawText($"状态 {statusText}", 236, 264, subPaint);
+    canvas.DrawText($"QQ {player.UserId}", 236, 294, subPaint);
+    canvas.DrawText($"当前位置  第 {player.Step} 步", 236, 324, subPaint);
 
-        canvas.DrawRoundRect(58, 58, width - 116, 76, 20, 20, accentPaint);
-        canvas.DrawRoundRect(58, 58, width - 116, 76, 20, 20, borderPaint);
+    // 右侧生命条
+    float barX = 528;
+    float barY = 182;
+    float barW = 224;
+    float barH = 18;
+    float hpRatio = player.MaxHP <= 0 ? 0 : Math.Clamp(player.HP / (float)player.MaxHP, 0f, 1f);
 
-        using var titlePaint = CreateTextPaint(34, strokeColor, true, SKTextAlign.Left);
-        using var namePaint = CreateTextPaint(30, strokeColor, true, SKTextAlign.Left);
-        using var subPaint = CreateTextPaint(18, subTextColor, false, SKTextAlign.Left);
-        using var labelPaint = CreateTextPaint(20, strokeColor, true, SKTextAlign.Left);
-        using var valuePaint = CreateTextPaint(24, strokeColor, true, SKTextAlign.Left);
-        using var chipPaint = new SKPaint
-        {
-            Color = SKColor.Parse("#FFF7E6"),
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
+    canvas.DrawText("生命条", 528, 170, labelPaint);
+    canvas.DrawRoundRect(barX, barY, barW, barH, 9, 9, progressBg);
+    canvas.DrawRoundRect(barX, barY, barW * hpRatio, barH, 9, 9, progressValue);
+    canvas.DrawRoundRect(barX, barY, barW, barH, 9, 9, borderPaint);
 
-        canvas.DrawText("冒险者档案", 82, 108, titlePaint);
+    // 右侧战斗统计
+    canvas.DrawText("战斗统计", 528, 248, labelPaint);
+    canvas.DrawText($"击杀次数  {player.KillCount}", 528, 280, subPaint);
+    canvas.DrawText($"阵亡次数  {player.DeathCount}", 528, 308, subPaint);
+    canvas.DrawText($"当前金币  {player.Gold}", 528, 336, subPaint);
 
-        using var avatar = await LoadAvatarAsync(player.UserId, 120);
-        DrawCircularAvatar(canvas, avatar, 84, 162, 120);
+    // ===== 底部属性区：2 行 4 列，保证不超出 =====
 
-        string statusText = player.HP <= 0 ? "【重伤】" : "【正常】";
-        canvas.DrawText(displayName, 236, 228, namePaint);
-        canvas.DrawText($"状态 {statusText}", 236, 264, subPaint);
-        canvas.DrawText($"QQ {player.UserId}", 236, 294, subPaint);
-        canvas.DrawText($"当前步数  第 {player.Step} 步", 236, 324, subPaint);
+    const float chipY1 = 392f;
+    const float chipY2 = 480f;
+    const float chipH = 72f;
 
-        DrawStatChip(canvas, 84, 368, 150, 72, "生命", $"{player.HP}/{player.MaxHP}", chipPaint, borderPaint, labelPaint, valuePaint);
-        DrawStatChip(canvas, 252, 368, 120, 72, "攻击", player.ATK.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
-        DrawStatChip(canvas, 390, 368, 120, 72, "防御", player.DEF.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
-        DrawStatChip(canvas, 528, 368, 120, 72, "金币", player.Gold.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
-        DrawStatChip(canvas, 666, 368, 100, 72, "步数", player.Step.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    // 第一排
+    DrawStatChip(canvas, 84,  chipY1, 150, chipH, "生命", $"{player.HP}/{player.MaxHP}", chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 252, chipY1, 120, chipH, "攻击", player.ATK.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 390, chipY1, 120, chipH, "防御", player.DEF.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 528, chipY1, 224, chipH, "金币", player.Gold.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
 
-        using var progressBg = new SKPaint
-        {
-            Color = SKColor.Parse("#ECECEC"),
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-        using var progressValue = new SKPaint
-        {
-            Color = SKColor.Parse("#74B9FF"),
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
+    // 第二排
+    DrawStatChip(canvas, 84,  chipY2, 150, chipH, "步数", player.Step.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 252, chipY2, 120, chipH, "击杀", player.KillCount.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 390, chipY2, 120, chipH, "阵亡", player.DeathCount.ToString(), chipPaint, borderPaint, labelPaint, valuePaint);
+    DrawStatChip(canvas, 528, chipY2, 224, chipH, "状态", statusText, chipPaint, borderPaint, labelPaint, valuePaint);
 
-        float barX = 528;
-        float barY = 182;
-        float barW = 224;
-        float barH = 18;
-        float hpRatio = player.MaxHP <= 0 ? 0 : Math.Clamp(player.HP / (float)player.MaxHP, 0f, 1f);
-
-        canvas.DrawText("生命条", 528, 170, labelPaint);
-        canvas.DrawRoundRect(barX, barY, barW, barH, 9, 9, progressBg);
-        canvas.DrawRoundRect(barX, barY, barW * hpRatio, barH, 9, 9, progressValue);
-        canvas.DrawRoundRect(barX, barY, barW, barH, 9, 9, borderPaint);
-
-        canvas.DrawText("基础属性", 528, 248, labelPaint);
-        canvas.DrawText("初始生命 100/100", 528, 280, subPaint);
-        canvas.DrawText("基础攻击 10", 528, 308, subPaint);
-        canvas.DrawText("基础防御 5", 528, 336, subPaint);
-
-        return ToBase64Png(bitmap);
-    }
+    return ToBase64Png(bitmap);
+}
 
     public static Task<string> GenerateHelpMenuAsync()
     {
@@ -365,6 +381,7 @@ public static class GameImageGenerator
         canvas.DrawRoundRect(x, y, w, h, 18, 18, fillPaint);
         canvas.DrawRoundRect(x, y, w, h, 18, 18, borderPaint);
 
+        // 标签上、数值下
         canvas.DrawText(label, x + 14, y + 26, labelPaint);
         canvas.DrawText(value, x + 14, y + 56, valuePaint);
     }
@@ -500,7 +517,8 @@ public static class GameImageGenerator
             Color = SKColors.White
         };
 
-        canvas.DrawRoundRect(new SKRect(cardRect.Left + 6, cardRect.Top + 8, cardRect.Right + 6, cardRect.Bottom + 8), 34, 34, shadowPaint);
+        canvas.DrawRoundRect(new SKRect(cardRect.Left + 6, cardRect.Top + 8, cardRect.Right + 6, cardRect.Bottom + 8),
+            34, 34, shadowPaint);
         canvas.DrawRoundRect(cardRect, 34, 34, cardPaint);
 
         using var titlePaint = CreateTextPaint(54, SKColor.Parse("#24324A"), true, SKTextAlign.Left);
