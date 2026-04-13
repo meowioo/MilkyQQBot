@@ -19,7 +19,7 @@ public static class FunCommands
             {
                 if (state.GroupPhysiognomyStatus.TryGetValue(context.PeerId, out bool isWorking) && isWorking)
                 {
-                    await context.ReplyAsync("⚠️ 奈奈川正在为上一位患者看诊，请排队等待上一个人鉴定完毕！");
+                    await context.TextAsync("⚠️ 奈奈川正在为上一位患者看诊，请排队等待上一个人鉴定完毕！");
                     return;
                 }
 
@@ -51,7 +51,7 @@ public static class FunCommands
                 }
 
                 string tips = targetQqId == context.SenderId ? "你" : "TA";
-                await context.ReplyAsync($"🔮 奈奈川正在凝视{tips}的头像，正在手写诊断报告单，请稍候...");
+                await context.TextAsync($"🔮 奈奈川正在凝视{tips}的头像，正在手写诊断报告单，请稍候...");
 
                 Console.WriteLine($"[鉴定系统] 准备调用 API，目标QQ: {targetQqId}, 昵称: {targetNickname}");
 
@@ -59,12 +59,12 @@ public static class FunCommands
 
                 if (result.StartsWith("base64://"))
                 {
-                    await context.ReplyImageAsync(result);
+                    await context.ImageAsync(result);
                     Console.WriteLine("[鉴定系统] ✅ 成功发送鉴定图片！");
                 }
                 else
                 {
-                    await context.ReplyAsync(result);
+                    await context.TextAsync(result);
                     Console.WriteLine($"[鉴定系统] ⚠️ 发送了文字错误提示: {result}");
                 }
             }
@@ -75,7 +75,7 @@ public static class FunCommands
                 Console.WriteLine(ex.ToString());
                 Console.ResetColor();
 
-                await context.ReplyAsync("❌ 糟糕，大师在凝视深渊的时候，被深渊反噬了（程序内部错误，已记录日志）。");
+                await context.TextAsync("❌ 糟糕，大师在凝视深渊的时候，被深渊反噬了（程序内部错误，已记录日志）。");
             }
             finally
             {
@@ -95,14 +95,14 @@ public static class FunCommands
 
             if (context.Scene != "group")
             {
-                await context.ReplyAsync("⚠️ 电子斗蛐蛐只能在群聊中进行哦！");
+                await context.TextAsync("⚠️ 电子斗蛐蛐只能在群聊中进行哦！");
                 return;
             }
 
             var matches = Regex.Matches(cmdStr, @"\[@(\d+)\]");
             if (matches.Count == 0)
             {
-                await context.ReplyAsync("⚠️ 你得先 @人 才能开打！\n用法：/头像pk @某人\n或者：/头像pk @甲 @乙");
+                await context.TextAsync("⚠️ 你得先 @人 才能开打！\n用法：/头像pk @某人\n或者：/头像pk @甲 @乙");
                 return;
             }
 
@@ -122,13 +122,13 @@ public static class FunCommands
 
             if (targetA_Id == targetB_Id)
             {
-                await context.ReplyAsync("⚠️ 精神分裂？不能和自己决斗哦！");
+                await context.TextAsync("⚠️ 精神分裂？不能和自己决斗哦！");
                 return;
             }
 
             if (state.GroupPkStatus.TryGetValue(context.PeerId, out string fightingNames) && !string.IsNullOrEmpty(fightingNames))
             {
-                await context.ReplyAsync($"⚠️ 擂台已被占用！【{fightingNames}】正在激烈交战中，请等待他们决出胜负！");
+                await context.TextAsync($"⚠️ 擂台已被占用！【{fightingNames}】正在激烈交战中，请等待他们决出胜负！");
                 return;
             }
 
@@ -152,7 +152,7 @@ public static class FunCommands
 
                 state.GroupPkStatus[context.PeerId] = $"{nameA} 和 {nameB}";
 
-                await context.ReplyAsync($"⚔️ 擂台钟声敲响！\n【{nameA}】与【{nameB}】已被丢进斗技场！\n奈奈川正在为您生成赛博战斗日志，请稍候...");
+                await context.TextAsync($"⚔️ 擂台钟声敲响！\n【{nameA}】与【{nameB}】已被丢进斗技场！\n奈奈川正在为您生成赛博战斗日志，请稍候...");
 
                 string result = await AvatarPkService.GeneratePkImageBase64Async(
                     targetA_Id.ToString(),
@@ -163,17 +163,17 @@ public static class FunCommands
 
                 if (result.StartsWith("base64://"))
                 {
-                    await context.ReplyImageAsync(result);
+                    await context.ImageAsync(result);
                 }
                 else
                 {
-                    await context.ReplyAsync(result);
+                    await context.TextAsync(result);
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[斗蛐蛐崩溃] {ex.Message}");
-                await context.ReplyAsync("❌ 决斗擂台被陨石砸中了（程序内部错误）。");
+                await context.TextAsync("❌ 决斗擂台被陨石砸中了（程序内部错误）。");
             }
             finally
             {

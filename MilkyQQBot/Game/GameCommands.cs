@@ -16,18 +16,18 @@ public static class GameCommands
         {
             if (context.Scene != "group")
             {
-                await context.ReplyReplyAsync("⚠️ 该指令只能在群聊中使用哦！");
+                await context.ReplyToMessageAsync("⚠️ 该指令只能在群聊中使用哦！");
                 return;
             }
 
             try
             {
                 string base64Image = await GameImageGenerator.GenerateHelpMenuAsync();
-                await context.ReplyImageAsync(base64Image);
+                await context.ImageAsync(base64Image);
             }
             catch (Exception ex)
             {
-                await context.ReplyReplyAsync($"❌ 帮助菜单生成失败：{ex.Message}");
+                await context.ReplyToMessageAsync($"❌ 帮助菜单生成失败：{ex.Message}");
             }
         });
         
@@ -35,24 +35,24 @@ public static class GameCommands
         {
             if (context.Scene != "group")
             {
-                await context.ReplyReplyAsync("⚠️ 该指令只能在群聊中使用哦！");
+                await context.ReplyToMessageAsync("⚠️ 该指令只能在群聊中使用哦！");
                 return;
             }
 
             if (context.SenderRole != "Owner" && context.SenderRole != "Admin")
             {
-                await context.ReplyReplyAsync("⚠️ 权限不足！该指令仅限群主或管理员使用。");
+                await context.ReplyToMessageAsync("⚠️ 权限不足！该指令仅限群主或管理员使用。");
                 return;
             }
 
             bool isEnabled = GroupConfigManager.ToggleGame(context.PeerId);
             if (isEnabled)
             {
-                await context.ReplyReplyAsync("✅ 已开启本群冒险游戏！现在可以使用 /join /go /look /info");
+                await context.ReplyToMessageAsync("✅ 已开启本群冒险游戏！现在可以使用 /join /go /look /info");
             }
             else
             {
-                await context.ReplyReplyAsync("❌ 已关闭本群冒险游戏。");
+                await context.ReplyToMessageAsync("❌ 已关闭本群冒险游戏。");
             }
         });
 
@@ -74,13 +74,13 @@ public static class GameCommands
 
             if (created)
             {
-                await context.ReplyReplyAsync($"✅ {displayName} 加入成功，当前位置：第 0 步。");
+                await context.ReplyToMessageAsync($"✅ {displayName} 加入成功，当前位置：第 0 步。");
             }
             else
             {
                 var player = GameRepository.GetPlayer(context.PeerId, context.SenderId);
                 int step = player?.Step ?? 0;
-                await context.ReplyReplyAsync($"ℹ️ 你已经加入过游戏了，当前在第 {step} 步。");
+                await context.ReplyToMessageAsync($"ℹ️ 你已经加入过游戏了，当前在第 {step} 步。");
             }
         });
 
@@ -96,7 +96,7 @@ public static class GameCommands
 
     if (player is null)
     {
-        await context.ReplyReplyAsync("你还没加入游戏。");
+        await context.ReplyToMessageAsync("你还没加入游戏。");
         return;
     }
 
@@ -172,7 +172,7 @@ public static class GameCommands
     }
 
     string finalMessage = string.Join("\n", messages);
-    await context.SendMentionTextAsync(context.SenderId, finalMessage);
+    await context.AtAsync(context.SenderId, finalMessage);
 });
 
         commandHandler.RegisterCommand("/look", async context =>
@@ -185,7 +185,7 @@ public static class GameCommands
             var self = GameRepository.GetPlayer(context.PeerId, context.SenderId);
             if (self is null)
             {
-                await context.ReplyReplyAsync("你还没加入游戏。");
+                await context.ReplyToMessageAsync("你还没加入游戏。");
                 return;
             }
 
@@ -193,11 +193,11 @@ public static class GameCommands
             {
                 List<GamePlayer> players = GameRepository.GetPlayers(context.PeerId);
                 string base64Image = await GameImageGenerator.GenerateMapAsync(players, MapPath);
-                await context.ReplyImageAsync(base64Image);
+                await context.ImageAsync(base64Image);
             }
             catch (Exception ex)
             {
-                await context.ReplyReplyAsync($"❌ 地图绘制失败：{ex.Message}");
+                await context.ReplyToMessageAsync($"❌ 地图绘制失败：{ex.Message}");
             }
         });
 
@@ -221,11 +221,11 @@ public static class GameCommands
             {
                 if (targetUserId == context.SenderId)
                 {
-                    await context.ReplyReplyAsync("你还没加入游戏。");
+                    await context.ReplyToMessageAsync("你还没加入游戏。");
                 }
                 else
                 {
-                    await context.ReplyReplyAsync($"{displayName} 还没加入游戏。");
+                    await context.ReplyToMessageAsync($"{displayName} 还没加入游戏。");
                 }
 
                 return;
@@ -237,11 +237,11 @@ public static class GameCommands
             try
             {
                 string base64Image = await GameImageGenerator.GeneratePlayerInfoAsync(player, displayName);
-                await context.ReplyImageAsync(base64Image);
+                await context.ImageAsync(base64Image);
             }
             catch (Exception ex)
             {
-                await context.ReplyReplyAsync($"❌ 玩家信息图生成失败：{ex.Message}");
+                await context.ReplyToMessageAsync($"❌ 玩家信息图生成失败：{ex.Message}");
             }
         });
     }
@@ -250,7 +250,7 @@ public static class GameCommands
     {
         if (context.Scene != "group")
         {
-            await context.ReplyReplyAsync("⚠️ 该指令只能在群聊中使用哦！");
+            await context.ReplyToMessageAsync("⚠️ 该指令只能在群聊中使用哦！");
             return false;
         }
 

@@ -48,7 +48,7 @@ public class SmsConfig
 
 public class TelegramNewsConfig
 {
-    public int PollIntervalMinutes { get; set; } = 3;
+    public int PollIntervalMinutes { get; set; } = 1;
 
     // true = 首次启动时只记录当前已有消息，不推送历史
     public bool BootstrapWithoutPush { get; set; } = true;

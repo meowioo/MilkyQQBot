@@ -16,13 +16,13 @@ public static class ApiConfig
     // ==========================================
     public static class ApiUrls
     {
-        // Epic 本周限免游戏海报 API
-        public const string EpicFreeGames = "https://api.lolimi.cn/API/epic/epic?type=img";
-
-        // 今日摸鱼日历 API
-        public const string MoyuCalendar = "https://api.lolimi.cn/API/60s/moyu_calendar";
-
-        // 早晚安问候图片 API
-        public const string MorningNightImage = "https://api.lolimi.cn/API/image-zw/api";
+        // // Epic 本周限免游戏海报 API
+        // public const string EpicFreeGames = "https://api.lolimi.cn/API/epic/epic?type=img";
+        //
+        // // 今日摸鱼日历 API
+        // public const string MoyuCalendar = "https://api.lolimi.cn/API/60s/moyu_calendar";
+        //
+        // // 早晚安问候图片 API
+        // public const string MorningNightImage = "https://api.lolimi.cn/API/image-zw/api";
     }
 }

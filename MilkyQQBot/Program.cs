@@ -39,8 +39,7 @@ GameCommands.Register(commandHandler, milky);
 // 注册事件
 BotEventRegistrar.Register(milky, commandHandler, state);
 
-// 接入定时任务
-BotScheduler.StartMorningNightRoutine(milky);
+//tg订阅
 TelegramNewsService.Start(milky);
 
 try

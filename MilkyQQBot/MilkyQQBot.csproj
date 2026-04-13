@@ -32,6 +32,7 @@
     </ItemGroup>
     <ItemGroup>
       <Compile Remove="Services\GameManager.cs" />
+      <Compile Remove="BotScheduler.cs" />
     </ItemGroup>
 
 </Project>
