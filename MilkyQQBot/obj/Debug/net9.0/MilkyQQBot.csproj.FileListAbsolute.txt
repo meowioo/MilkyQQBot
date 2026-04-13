@@ -130,3 +130,4 @@ C:\Users\elito\Desktop\MilkyQQBot\MilkyQQBot\obj\Debug\net9.0\MilkyQQBot.genrunt
 C:\Users\elito\Desktop\MilkyQQBot\MilkyQQBot\obj\Debug\net9.0\ref\MilkyQQBot.dll
 C:\Users\elito\Desktop\MilkyQQBot\MilkyQQBot\bin\Debug\net9.0\Game\Assets\yutaixiantangpingti.ttf
 C:\Users\elito\Desktop\MilkyQQBot\MilkyQQBot\bin\Debug\net9.0\Game\Assets\汉仪正圆-75.ttf
+C:\Users\elito\Desktop\MilkyQQBot\MilkyQQBot\bin\Debug\net9.0\WTelegramClient.dll

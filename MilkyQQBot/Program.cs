@@ -7,6 +7,20 @@ using MilkyQQBot.Services;
 
 Console.WriteLine("正在初始化 Milky 机器人客户端...");
 
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    Console.WriteLine("[Fatal] 未处理异常:");
+    Console.WriteLine(e.ExceptionObject?.ToString());
+};
+
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    Console.WriteLine("[Task] 未观察到的任务异常:");
+    Console.WriteLine(e.Exception.ToString());
+    e.SetObserved();
+};
+
+
 // 初始化数据库与群配置
 DatabaseManager.Initialize();
 GameRepository.Initialize();
@@ -39,8 +53,15 @@ GameCommands.Register(commandHandler, milky);
 // 注册事件
 BotEventRegistrar.Register(milky, commandHandler, state);
 
-//tg订阅
-TelegramNewsService.Start(milky);
+try
+{
+    await TelegramMsgService.StartAsync(milky);
+}
+catch (Exception ex)
+{
+    Console.WriteLine("[Program] TelegramMsgService 启动时发生未处理异常，但主程序将继续运行。");
+    Console.WriteLine(ex);
+}
 
 try
 {

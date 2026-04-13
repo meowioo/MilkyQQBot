@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "FWDVS1QMxTI=",
+  "dgSpecHash": "DMXgazHOTEk=",
   "success": true,
   "projectFilePath": "C:\\Users\\elito\\Desktop\\MilkyQQBot\\MilkyQQBot\\MilkyQQBot.csproj",
   "expectedPackageFiles": [
@@ -23,7 +23,8 @@
     "C:\\Users\\elito\\.nuget\\packages\\system.net.http.json\\10.0.3\\system.net.http.json.10.0.3.nupkg.sha512",
     "C:\\Users\\elito\\.nuget\\packages\\system.net.serversentevents\\10.0.3\\system.net.serversentevents.10.0.3.nupkg.sha512",
     "C:\\Users\\elito\\.nuget\\packages\\system.text.encodings.web\\10.0.3\\system.text.encodings.web.10.0.3.nupkg.sha512",
-    "C:\\Users\\elito\\.nuget\\packages\\system.text.json\\10.0.3\\system.text.json.10.0.3.nupkg.sha512"
+    "C:\\Users\\elito\\.nuget\\packages\\system.text.json\\10.0.3\\system.text.json.10.0.3.nupkg.sha512",
+    "C:\\Users\\elito\\.nuget\\packages\\wtelegramclient\\4.4.3\\wtelegramclient.4.4.3.nupkg.sha512"
   ],
   "logs": []
 }

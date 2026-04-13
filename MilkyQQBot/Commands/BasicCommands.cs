@@ -249,7 +249,7 @@ public static class BasicCommands
                 return;
             }
 
-            bool isNowEnabled = GroupConfigManager.ToggleTelegramNews(context.PeerId);
+            bool isNowEnabled = GroupConfigManager.ToggleTelegramMsg(context.PeerId);
 
             if (isNowEnabled)
             {

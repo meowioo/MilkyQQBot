@@ -11,7 +11,7 @@ public class AppConfigRoot
     public SteamConfig Steam { get; set; } = new();
     public AiConfig Ai { get; set; } = new();
     public SmsConfig Sms { get; set; } = new();
-    public TelegramNewsConfig TelegramNews { get; set; } = new();
+    public TelegramConfig Telegram { get; set; } = new();
 }
 
 public class BotConfig
@@ -46,21 +46,59 @@ public class SmsConfig
     public string Token { get; set; } = "";
 }
 
-public class TelegramNewsConfig
+public class TelegramConfig
 {
-    public int PollIntervalMinutes { get; set; } = 1;
+    public bool Enabled { get; set; } = true;
 
-    // true = 首次启动时只记录当前已有消息，不推送历史
+    // true = 首次启动只建立基线，不补发历史
     public bool BootstrapWithoutPush { get; set; } = true;
 
-    public List<TelegramFeedConfig> Feeds { get; set; } = new();
+    // 是否在推送文本前加来源头部
+    public bool IncludeSourceHeader { get; set; } = true;
+
+    // 是否显示发送者
+    public bool IncludeSenderName { get; set; } = true;
+
+    // Telegram API 凭据
+    public string ApiId { get; set; } = "";
+    public string ApiHash { get; set; } = "";
+    public string PhoneNumber { get; set; } = "";
+    public string Password { get; set; } = "";
+
+    // session 文件
+    public string SessionPath { get; set; } = "WTelegram.session";
+
+    // Telegram 媒体缓存目录
+    public string MediaCacheDirectory { get; set; } = "telegram_media";
+
+    // 媒体文件保留小时数
+    public int MediaKeepHours { get; set; } = 12;
+
+    // 监听源，后续可同时支持频道、群组、私聊
+    public List<TelegramSourceConfig> Sources { get; set; } = new();
+    
+    // 多久清理一次缓存
+    public int MediaCleanupIntervalMinutes { get; set; } = 60;
+
+    // 是否输出 WTelegram 原始底层日志
+    public bool VerboseSdkLog { get; set; } = false;
+
+    // 是否打印“成功推送到群”的提示
+    public bool LogForwardSuccess { get; set; } = true;
 }
 
-public class TelegramFeedConfig
+public class TelegramSourceConfig
 {
-    public string Name { get; set; } = "";
-    public string Url { get; set; } = "";
+    // channel / group / user
+    public string Type { get; set; } = "channel";
+
+    // 支持 @username、标题名、纯数字 id
+    public string Value { get; set; } = "";
+
+    // 给 QQ 侧显示的别名，可为空
+    public string Alias { get; set; } = "";
 }
+
 
 public static class AppConfig
 {

@@ -414,6 +414,19 @@
         "build": {
           "buildTransitive/net8.0/System.Text.Json.targets": {}
         }
+      },
+      "WTelegramClient/4.4.3": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/WTelegramClient.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/WTelegramClient.dll": {
+            "related": ".xml"
+          }
+        }
       }
     }
   },
@@ -973,6 +986,25 @@
         "system.text.json.nuspec",
         "useSharedDesignerContext.txt"
       ]
+    },
+    "WTelegramClient/4.4.3": {
+      "sha512": "egmvNHPPdcfcHrp2eM5j49eJ4806APeqQNHEsh5dMhpDbaeN+JP+EtgKeJGCKKOLw4aogLJQKcFLhob9qfMhTA==",
+      "type": "package",
+      "path": "wtelegramclient/4.4.3",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "lib/net5.0/WTelegramClient.dll",
+        "lib/net5.0/WTelegramClient.xml",
+        "lib/net8.0/WTelegramClient.dll",
+        "lib/net8.0/WTelegramClient.xml",
+        "lib/netstandard2.0/WTelegramClient.dll",
+        "lib/netstandard2.0/WTelegramClient.xml",
+        "logo.png",
+        "wtelegramclient.4.4.3.nupkg.sha512",
+        "wtelegramclient.nuspec"
+      ]
     }
   },
   "projectFileDependencyGroups": {
@@ -980,7 +1012,8 @@
       "JiebaNet.Segmenter >= 1.0.6",
       "Microsoft.Data.Sqlite >= 10.0.4",
       "Milky.Net.Client >= 4.0.0-preview.4",
-      "SkiaSharp >= 3.119.2"
+      "SkiaSharp >= 3.119.2",
+      "WTelegramClient >= 4.4.3"
     ]
   },
   "packageFolders": {
@@ -1048,6 +1081,10 @@
           "SkiaSharp": {
             "target": "Package",
             "version": "[3.119.2, )"
+          },
+          "WTelegramClient": {
+            "target": "Package",
+            "version": "[4.4.3, )"
           }
         },
         "imports": [

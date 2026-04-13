@@ -12,10 +12,11 @@
       <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.4" />
       <PackageReference Include="Milky.Net.Client" Version="4.0.0-preview.4" />
       <PackageReference Include="SkiaSharp" Version="3.119.2" />
+      <PackageReference Include="WTelegramClient" Version="4.4.3" />
     </ItemGroup>
     <ItemGroup>
         <None Update="appsettings.json">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Update="Assets\QQMap.png">
           <CopyToOutputDirectory>Always</CopyToOutputDirectory>
