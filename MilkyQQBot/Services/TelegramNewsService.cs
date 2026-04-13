@@ -24,6 +24,7 @@ namespace MilkyQQBot.Services;
 /// - 纯图片消息里附带的 GMT 时间行会自动去掉
 /// - 文件消息（📄 / zip / rar / 7z / pdf / docx 等）直接忽略
 /// - 转发消息（🔁）会自动去掉 "Forwarded From ..." 那一段
+/// - 回复消息（↩️）会自动去掉 rsshub-quote 引用块
 /// </summary>
 public static class TelegramNewsService
 {
@@ -219,6 +220,13 @@ public static class TelegramNewsService
             bodyHtml = RemoveForwardedFromBlock(bodyHtml);
         }
 
+        // 如果标题带 ↩️，代表这是一条回复消息
+        // 先从 HTML 中去掉最前面的 rsshub-quote 引用块，避免被解析进正文
+        if (IsReplyTitle(title))
+        {
+            bodyHtml = RemoveReplyQuoteBlock(bodyHtml);
+        }
+
         string pubDateRaw = (itemElement.Element("pubDate")?.Value ?? string.Empty).Trim();
         DateTimeOffset publishedAt =
             DateTimeOffset.TryParse(pubDateRaw, out var parsedDate)
@@ -231,6 +239,12 @@ public static class TelegramNewsService
         if (IsForwardedTitle(title))
         {
             plainText = RemoveForwardedFromText(plainText);
+        }
+
+        // 再做一次兜底清理，防止回复引用残留进正文
+        if (IsReplyTitle(title))
+        {
+            plainText = RemoveReplyQuoteText(plainText);
         }
 
         var imageUrls = ExtractImageUrls(bodyHtml);
@@ -273,6 +287,16 @@ public static class TelegramNewsService
     }
 
     /// <summary>
+    /// 判断是否为回复消息标题
+    /// ↩️：代表回复
+    /// </summary>
+    private static bool IsReplyTitle(string title)
+    {
+        return !string.IsNullOrWhiteSpace(title) &&
+               title.Contains("↩️", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 从 HTML 中移除转发来源段落。
     /// 例如：
     /// <p>Forwarded From ...</p>
@@ -288,6 +312,31 @@ public static class TelegramNewsService
         result = Regex.Replace(
             result,
             @"^\s*(<p>\s*Forwarded From.*?</p>\s*)+",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        return result.Trim();
+    }
+
+    /// <summary>
+    /// 从 HTML 中移除回复引用块。
+    /// 例如：
+    /// <div class="rsshub-quote"><blockquote>...</blockquote></div>
+    /// 
+    /// 这类内容是 Telegram 回复消息里的“被回复内容”，
+    /// 群转发时不需要保留。
+    /// </summary>
+    private static string RemoveReplyQuoteBlock(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return string.Empty;
+
+        string result = html;
+
+        // 去掉开头连续出现的 rsshub-quote 引用块
+        result = Regex.Replace(
+            result,
+            @"^\s*(<div\b[^>]*class\s*=\s*['""][^'""]*\brsshub-quote\b[^'""]*['""][^>]*>.*?</div>\s*)+",
             string.Empty,
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
@@ -334,6 +383,63 @@ public static class TelegramNewsService
     }
 
     /// <summary>
+    /// 从纯文本中移除回复引用残留。
+    /// 
+    /// 经过 RemoveReplyQuoteBlock 后，大多数情况不会再残留。
+    /// 这里额外做一次兜底，避免某些格式变化时还留下：
+    /// - “某某:”
+    /// - “Photo / Video / File ...”
+    /// 这种引用摘要。
+    /// </summary>
+    private static string RemoveReplyQuoteText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+
+        var lines = normalized
+            .Split('\n', StringSplitOptions.None)
+            .Select(x => x.Trim())
+            .ToList();
+
+        // 去掉开头的空行
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+            lines.RemoveAt(0);
+
+        if (lines.Count == 0)
+            return string.Empty;
+
+        // 常见的引用摘要第二行
+        bool secondLineLooksLikeQuotedMedia =
+            lines.Count >= 2 &&
+            (
+                lines[1].Equals("Photo", StringComparison.OrdinalIgnoreCase) ||
+                lines[1].Equals("Video", StringComparison.OrdinalIgnoreCase) ||
+                lines[1].Equals("File", StringComparison.OrdinalIgnoreCase) ||
+                lines[1].Equals("Document", StringComparison.OrdinalIgnoreCase) ||
+                lines[1].Equals("Sticker", StringComparison.OrdinalIgnoreCase) ||
+                lines[1].Equals("GIF", StringComparison.OrdinalIgnoreCase)
+            );
+
+        // 第一行常见形式：频道名:
+        bool firstLineLooksLikeQuotedSender =
+            lines[0].EndsWith(":", StringComparison.Ordinal) ||
+            lines[0].EndsWith("：", StringComparison.Ordinal);
+
+        if (firstLineLooksLikeQuotedSender && secondLineLooksLikeQuotedMedia)
+        {
+            lines.RemoveAt(0);
+            lines.RemoveAt(0);
+
+            while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+                lines.RemoveAt(0);
+        }
+
+        return string.Join("\n", lines).Trim();
+    }
+
+    /// <summary>
     /// 判断当前 item 是否为“文件消息”。
     ///
     /// 标记说明：
@@ -344,10 +450,11 @@ public static class TelegramNewsService
     ///
     /// 文件消息直接忽略，不进行转发。
     /// </summary>
-    private static bool IsFileOnlyMessage( string title)
+    private static bool IsFileOnlyMessage(string title)
     {
         var titleText = title?.Trim() ?? string.Empty;
-        // 只要标题里有 📄，并且没有图片、没有视频，就优先视为文件消息
+
+        // 只要标题里有 📄，就视为文件消息
         return titleText.Contains("📄", StringComparison.Ordinal);
     }
 
@@ -461,8 +568,9 @@ public static class TelegramNewsService
     /// 清理正文文本：
     /// 1. 去掉首行的 GMT 时间文字
     /// 2. 去掉残留的 Forwarded From 行
-    /// 3. 去掉多余空行
-    /// 4. 限制最大长度
+    /// 3. 去掉残留的回复引用摘要
+    /// 4. 去掉多余空行
+    /// 5. 限制最大长度
     /// </summary>
     private static string NormalizeDisplayText(string text)
     {
@@ -476,6 +584,9 @@ public static class TelegramNewsService
 
         // 去掉可能残留的 Forwarded From 行
         result = RemoveForwardedFromText(result);
+
+        // 去掉可能残留的回复引用摘要
+        result = RemoveReplyQuoteText(result);
 
         // 压缩多余空行
         result = Regex.Replace(result, @"\n{3,}", "\n\n").Trim();
@@ -536,7 +647,7 @@ public static class TelegramNewsService
     /// <summary>
     /// 规范化标题：
     /// - 如果标题为空，返回空字符串
-    /// - 去掉前缀媒体标记：🔁 🖼 🎬 📄 等
+    /// - 去掉前缀媒体标记：🔁 ↩️ 🖼 🎬 📄 等
     /// - 如果清理后为空，则返回空字符串
     /// </summary>
     private static string NormalizeTitle(string title)
@@ -549,7 +660,7 @@ public static class TelegramNewsService
         // 去掉前缀媒体标记
         normalized = Regex.Replace(
             normalized,
-            @"^(?:(?:🔁|🖼️?|🎬|📄|📷|🎥|📹|🎞|🎬)\s*)+",
+            @"^(?:(?:🔁|↩️|🖼️?|🎬|📄|📷|🎥|📹|🎞)\s*)+",
             string.Empty,
             RegexOptions.IgnoreCase).Trim();
 
@@ -580,7 +691,8 @@ public static class TelegramNewsService
             or "🎞"
             or "🎬"
             or "📄"
-            or "🔁";
+            or "🔁"
+            or "↩️";
     }
 
     /// <summary>
