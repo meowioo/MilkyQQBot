@@ -1,10 +1,9 @@
 using System.Text.RegularExpressions;
 using Milky.Net.Client;
 using Milky.Net.Model;
+using MilkyQQBot.Features.ChatAi.Legacy;
 using MilkyQQBot.Features.ChatAi.V2.Models;
 using MilkyQQBot.Services;
-using MilkyQQBot.Features.ChatAi.Legacy;
-
 
 namespace MilkyQQBot.Features.ChatAi;
 
@@ -15,18 +14,17 @@ public static class ChatAiEntry
         BotRuntimeState state,
         ChatAiInput input)
     {
-        var config = GroupConfigManager.GetConfig(input.GroupId);
+        GroupFeatureConfig config = GroupConfigManager.GetConfig(input.GroupId);
         string pureTextForAi = NormalizeTextForAi(input.PlainText);
 
         if (ShouldSkip(config, input, pureTextForAi))
             return;
 
         var triggerDecision = LegacyTrigger.Evaluate(input);
-
         if (!triggerDecision.ShouldTrigger)
             return;
 
-        if (!TryEnterThinking(state, input.GroupId, input.IsBotMentioned, out int cooldownSeconds))
+        if (!TryEnterThinking(state, input.GroupId, input.IsBotMentioned, out _))
             return;
 
         _ = Task.Run(async () =>
@@ -59,7 +57,7 @@ public static class ChatAiEntry
     }
 
     private static bool ShouldSkip(
-        dynamic config,
+        GroupFeatureConfig config,
         ChatAiInput input,
         string pureTextForAi)
     {
@@ -67,17 +65,6 @@ public static class ChatAiEntry
                pureTextForAi.StartsWith("/") ||
                string.IsNullOrWhiteSpace(pureTextForAi) ||
                input.SenderId == input.BotId;
-    }
-
-    private static bool ShouldTrigger(ChatAiInput input)
-    {
-        if (input.GroupId == 792316113)
-            return true;
-
-        if (input.IsBotMentioned)
-            return true;
-
-        return Random.Shared.Next(100) < 30;
     }
 
     private static bool TryEnterThinking(
@@ -117,7 +104,7 @@ public static class ChatAiEntry
     {
         Console.WriteLine($"[AI触发] 群 {input.GroupId} 满足条件，原因：{triggerReason}");
 
-        List<string> history = BuildHistory(input, pureTextForAi);
+        List<string> history = LegacyHistoryBuilder.Build(input, pureTextForAi);
         string aiReply = await AiChatService.GetAiResponseAsync(history);
 
         if (string.IsNullOrWhiteSpace(aiReply))
@@ -128,19 +115,6 @@ public static class ChatAiEntry
 
         Console.WriteLine($"[AI回复] {aiReply}");
         state.GroupAiLastReplyTime[input.GroupId] = DateTime.Now;
-    }
-
-    private static List<string> BuildHistory(ChatAiInput input, string pureTextForAi)
-    {
-        if (input.IsBotMentioned)
-        {
-            return new List<string>
-            {
-                $"[{input.SenderId}][{input.SenderNickname}]:{pureTextForAi}"
-            };
-        }
-
-        return DatabaseManager.GetRecentGroupMessagesFormatted(input.GroupId, 50);
     }
 
     private static async Task SendReplyAsync(
