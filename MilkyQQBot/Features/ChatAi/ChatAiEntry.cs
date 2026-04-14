@@ -20,9 +20,10 @@ public static class ChatAiEntry
 
         if (ShouldSkip(config, input, pureTextForAi))
             return;
-
+                
+        var conv = ConversationTracker.Observe(state, input);
         List<string> recentMessages = DatabaseManager.GetRecentGroupMessagesFormatted(input.GroupId, 3);
-        var triggerDecision = V2Trigger.Evaluate(input, state, recentMessages);
+        var triggerDecision = V2Trigger.Evaluate(input, state, conv, recentMessages);
 
         if (!triggerDecision.ShouldTrigger)
             return;
@@ -118,6 +119,7 @@ public static class ChatAiEntry
 
         Console.WriteLine($"[AI回复] {aiReply}");
         state.GroupAiLastReplyTime[input.GroupId] = DateTime.Now;
+        ConversationTracker.MarkBotReplied(state, input.GroupId, triggerReason);
     }
 
     private static async Task SendReplyAsync(

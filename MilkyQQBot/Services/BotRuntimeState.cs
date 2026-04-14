@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using MilkyQQBot.Features.ChatAi.V2.Models;
 
 namespace MilkyQQBot.Services;
 
@@ -10,6 +11,8 @@ public class BotRuntimeState
 
     // 记录每个群上一次成功发送 AI 回复的时间（冷却记录）
     public ConcurrentDictionary<long, DateTime> GroupAiLastReplyTime { get; } = new();
+    
+    public Dictionary<long, GroupConversationState> GroupConversationStates { get; set; } = new();
 
     // 记录每个群当前是否正在进行头像鉴定（防群内多点并发冲突）
     public ConcurrentDictionary<long, bool> GroupPhysiognomyStatus { get; } = new();

@@ -8,6 +8,7 @@ public static class V2Trigger
     public static V2TriggerDecision Evaluate(
         ChatAiInput input,
         BotRuntimeState state,
+        GroupConversationState conv,
         List<string> recentMessages)
     {
         if (input.IsBotMentioned)
@@ -23,13 +24,23 @@ public static class V2Trigger
             }
         }
 
-        int nonEmptyCount = recentMessages.Count(x => !string.IsNullOrWhiteSpace(x));
-        if (nonEmptyCount >= 2)
+        // 新一轮讨论正在形成：至少2个参与者，至少3条人类消息
+        if (!conv.BotEngaged &&
+            conv.RecentParticipantIds.Count >= 2 &&
+            conv.RecentHumanMessageCount >= 3)
         {
-            return V2TriggerDecision.Trigger("最近3条消息形成讨论");
+            return V2TriggerDecision.Trigger("新话题形成");
         }
 
-        return V2TriggerDecision.Skip("未形成讨论");
+        // 机器人已经参与这轮讨论后，允许跟进一次
+        if (conv.BotEngaged &&
+            conv.HumanMessagesSinceBotReply >= 2 &&
+            (DateTime.Now - conv.LastHumanMessageAt).TotalSeconds <= 45)
+        {
+            return V2TriggerDecision.Trigger("跟进当前话题");
+        }
+
+        return V2TriggerDecision.Skip("讨论热度不足");
     }
 }
 
