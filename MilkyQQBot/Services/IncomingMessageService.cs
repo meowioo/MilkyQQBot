@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Milky.Net.Client;
 using Milky.Net.Model;
+using MilkyQQBot.Features.ChatAi;
+using MilkyQQBot.Features.ChatAi.V2.Models;
 
 namespace MilkyQQBot.Services;
 
@@ -135,121 +137,20 @@ public static class IncomingMessageService
                     segments: simplifiedSegments
                 );
 
-                await TryTriggerGroupAiAsync(
-                    milky,
-                    state,
-                    peerId,
-                    senderId,
-                    senderNickname,
-                    pureTextBuilder.ToString(),
-                    isBotMentioned,
-                    myBotId
-                );
+                await ChatAiEntry.HandleGroupMessageAsync(milky, state, new ChatAiInput
+                {
+                    GroupId = peerId,
+                    SenderId = senderId,
+                    SenderNickname = senderNickname,
+                    PlainText = pureTextBuilder.ToString(),
+                    IsBotMentioned = isBotMentioned,
+                    BotId = myBotId
+                });
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"解析消息失败: {ex.Message}");
         }
-    }
-
-    private static async Task TryTriggerGroupAiAsync(
-        MilkyClient milky,
-        BotRuntimeState state,
-        long peerId,
-        long senderId,
-        string senderNickname,
-        string pureText,
-        bool isBotMentioned,
-        long myBotId)
-    {
-        var config = GroupConfigManager.GetConfig(peerId);
-
-        string pureTextForAi = Regex.Replace(pureText, @"https?://[^\s]+", "").Trim();
-
-        if (!config.AiChatEnabled ||
-            pureTextForAi.StartsWith("/") ||
-            string.IsNullOrWhiteSpace(pureTextForAi) ||
-            senderId == myBotId)
-        {
-            return;
-        }
-
-        bool shouldTrigger = false;
-
-        if (peerId == 792316113)
-        {
-            shouldTrigger = true;
-        }
-        else if (isBotMentioned)
-        {
-            shouldTrigger = true;
-        }
-        else if (Random.Shared.Next(100) < 30)
-        {
-            shouldTrigger = true;
-        }
-
-        if (!shouldTrigger) return;
-
-        if (state.GroupAiThinkingStatus.TryGetValue(peerId, out bool isThinking) && isThinking)
-        {
-            Console.WriteLine($"[AI拦截] 群 {peerId} 机器人正在思考中，忽略本次触发...");
-            return;
-        }
-
-        int cooldownSeconds = isBotMentioned ? 5 : 10;
-        if (state.GroupAiLastReplyTime.TryGetValue(peerId, out DateTime lastReplyTime))
-        {
-            if ((DateTime.Now - lastReplyTime).TotalSeconds < cooldownSeconds)
-            {
-                Console.WriteLine($"[AI拦截] 群 {peerId} 处于 {cooldownSeconds}s 冷却期内，忽略触发...");
-                return;
-            }
-        }
-
-        state.GroupAiThinkingStatus[peerId] = true;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string reason = isBotMentioned ? "被@特权" : (peerId == 792316113 ? "测试群特权" : "30%概率");
-                Console.WriteLine($"[AI触发] 群 {peerId} 满足条件，原因：{reason}");
-
-                List<string> history;
-                if (isBotMentioned)
-                {
-                    history = new List<string> { $"[{senderId}][{senderNickname}]:{pureTextForAi}" };
-                }
-                else
-                {
-                    history = DatabaseManager.GetRecentGroupMessagesFormatted(peerId, 50);
-                }
-
-                string aiReply = await AiChatService.GetAiResponseAsync(history);
-
-                if (!string.IsNullOrWhiteSpace(aiReply))
-                {
-                    aiReply = aiReply.Trim();
-                    var segment = new OutgoingSegment<TextOutgoingSegmentData>(new(aiReply));
-                    var req = new SendGroupMessageRequest(peerId, new[] { segment });
-                    await milky.Message.SendGroupMessageAsync(req);
-
-                    Console.WriteLine($"[AI回复] {aiReply}");
-                    state.GroupAiLastReplyTime[peerId] = DateTime.Now;
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"[AI执行异常] {aiEx.Message}");
-            }
-            finally
-            {
-                state.GroupAiThinkingStatus[peerId] = false;
-            }
-        });
-
-        await Task.CompletedTask;
     }
 }
