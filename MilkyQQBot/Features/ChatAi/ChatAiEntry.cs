@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Milky.Net.Client;
 using Milky.Net.Model;
-using MilkyQQBot.Features.ChatAi.Legacy;
 using MilkyQQBot.Features.ChatAi.V2;
 using MilkyQQBot.Features.ChatAi.V2.Models;
 using MilkyQQBot.Services;
