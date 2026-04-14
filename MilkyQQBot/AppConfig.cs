@@ -73,6 +73,11 @@ public class TelegramConfig
 
     // 媒体文件保留小时数
     public int MediaKeepHours { get; set; } = 12;
+    // 是否启用文本关键字过滤
+    public bool EnableKeywordFilter { get; set; } = true;
+
+    // 额外的自定义屏蔽关键字
+    public List<string> BlockedKeywords { get; set; } = new();
 
     // 监听源，后续可同时支持频道、群组、私聊
     public List<TelegramSourceConfig> Sources { get; set; } = new();

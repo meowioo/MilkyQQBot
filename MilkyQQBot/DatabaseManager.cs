@@ -274,6 +274,42 @@ public static class DatabaseManager
         tempList.Reverse();
         return tempList;
     }
+    
+    public static List<string> GetRecentBotReplies(long groupId, long botId, int limit = 15)
+    {
+        var replies = new List<string>();
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT PlainText
+        FROM GroupMessages
+        WHERE GroupId = @GroupId
+          AND SenderId = @BotId
+          AND PlainText IS NOT NULL
+          AND TRIM(PlainText) != ''
+        ORDER BY ReceiveTime DESC
+        LIMIT @Limit";
+
+        command.Parameters.AddWithValue("@GroupId", groupId);
+        command.Parameters.AddWithValue("@BotId", botId);
+        command.Parameters.AddWithValue("@Limit", limit);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            string text = reader.GetString(0);
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                replies.Add(text.Trim());
+            }
+        }
+
+        return replies;
+    }
 
     private static string ExtractPureTextFromJson(string rawJson)
     {

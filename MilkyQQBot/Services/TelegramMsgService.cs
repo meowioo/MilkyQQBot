@@ -473,6 +473,10 @@ public static class TelegramMsgService
         if (payload == null)
             return;
 
+        // 命中广告 / 不良信息关键字时，直接拦截，不推送
+        if (ShouldBlockMessage(watchedPeer, payload))
+            return;
+
         await DispatchToGroupsAsync(watchedPeer, payload);
     }
 
@@ -573,6 +577,10 @@ public static class TelegramMsgService
         if (payload == null)
             return;
 
+        // 命中广告 / 不良信息关键字时，直接拦截，不推送
+        if (ShouldBlockMessage(buffer.WatchedPeer, payload))
+            return;
+
         await DispatchToGroupsAsync(buffer.WatchedPeer, payload);
     }
 
@@ -603,6 +611,8 @@ public static class TelegramMsgService
             LogInfo($"“{watchedPeer.DisplayName}”的新消息已转发到 {successCount} 个 QQ 群。");
         }
     }
+    
+    
 
     /// <summary>
     /// 构造普通单条 Telegram 消息的转发内容。
@@ -1507,5 +1517,29 @@ public static class TelegramMsgService
         }
 
         return false;
+    }
+    
+    /// <summary>
+    /// 判断当前消息是否应被拦截。
+    /// 只按文字内容做关键字过滤。
+    /// 如果命中广告/不良信息，则打印日志并返回 true。
+    /// </summary>
+    private static bool ShouldBlockMessage(WatchedPeer watchedPeer, TelegramDispatchPayload payload)
+    {
+        if (_config?.EnableKeywordFilter != true)
+            return false;
+
+        // 只按文字内容过滤；纯图片/纯视频且没有文字时，这里不拦
+        if (!TelegramContentFilter.TryMatchBlockedText(
+                payload.Text,
+                _config.BlockedKeywords,
+                out string matchedKeyword,
+                out string matchedCategory))
+        {
+            return false;
+        }
+
+        LogInfo($"已拦截“{watchedPeer.DisplayName}”的一条消息，原因：命中{matchedCategory}关键字“{matchedKeyword}”。");
+        return true;
     }
 }

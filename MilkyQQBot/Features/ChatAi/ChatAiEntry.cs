@@ -117,7 +117,26 @@ public static class ChatAiEntry
         if (string.IsNullOrWhiteSpace(aiReply))
             return;
 
+        
         aiReply = aiReply.Trim();
+        
+        var styleGuardResult = ResponseStyleGuard.Evaluate(aiReply);
+        if (styleGuardResult.ShouldBlock)
+        {
+            Console.WriteLine($"[AI拦截] 群 {input.GroupId} 回复风格不合适，原因：{styleGuardResult.Reason}");
+            return;
+        }
+        
+        List<string> recentBotReplies = DatabaseManager.GetRecentBotReplies(
+            input.GroupId,
+            input.BotId,
+            15);
+
+        if (SelfRepeatGuard.IsTooSimilar(aiReply, recentBotReplies))
+        {
+            Console.WriteLine($"[AI拦截] 群 {input.GroupId} 回复与近期自己发言过于相似，已跳过。");
+            return;
+        }
         await SendReplyAsync(milky, input.GroupId, aiReply);
 
         Console.WriteLine($"[AI回复] {aiReply}");
