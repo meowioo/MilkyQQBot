@@ -64,32 +64,32 @@ public static class TelegramMsgService
 
                 if (_config == null || !_config.Enabled)
                 {
-                    LogInfo("未启用。");
+                    LogInfo("Telegram 功能未开启。");
                     return;
                 }
 
                 if (_config.Sources == null || _config.Sources.Count == 0)
                 {
-                    LogInfo("未配置任何监听源。");
+                    LogInfo("未配置 Telegram 监听源，本次不启动 Telegram 转发。");
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(_config.ApiId))
                 {
-                    LogInfo("Telegram.ApiId 未配置，跳过启动。");
+                    LogInfo("未填写 Telegram ApiId，本次不启动 Telegram 转发。");
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(_config.ApiHash))
                 {
-                    LogInfo("Telegram.ApiHash 未配置，跳过启动。");
+                    LogInfo("未填写 Telegram ApiHash，本次不启动 Telegram 转发。");
                     return;
                 }
 
                 string apiHash = _config.ApiHash.Trim();
                 if (apiHash.Any(c => !Uri.IsHexDigit(c)))
                 {
-                    LogInfo("Telegram.ApiHash 配置不合法，必须是从 my.telegram.org 获取的十六进制字符串。跳过启动。");
+                    LogInfo("Telegram ApiHash 格式不正确，请检查配置文件。");
                     return;
                 }
 
@@ -99,7 +99,7 @@ public static class TelegramMsgService
                     bool enableTelegram = AskEnableTelegramWithExistingSession();
                     if (!enableTelegram)
                     {
-                        LogInfo("用户选择本次不启用 Telegram 相关功能，QQ 机器人其他功能将继续正常运行。");
+                        LogInfo("本次已跳过 Telegram 功能，QQ 机器人其它功能不受影响。");
                         return;
                     }
                 }
@@ -129,16 +129,16 @@ public static class TelegramMsgService
                 // - 已有 session 直接恢复
                 // - 没有 session 时进入验证码/2FA/邮箱验证/注册信息流程
                 var me = await _client.LoginUserIfNeeded();
-                LogInfo($"登录成功：{FormatUserName(me)} ({me.id})");
+                LogInfo($"Telegram 登录成功：{FormatUserName(me)}");
 
                 var dialogs = await _client.Messages_GetAllDialogs();
                 dialogs.CollectUsersChats(_manager.Users, _manager.Chats);
 
-                _watchedPeers = ResolveWatchedPeers(_config.Sources, _manager.Users, _manager.Chats);
+                _watchedPeers = await ResolveWatchedPeersAsync(_config.Sources);
 
                 if (_watchedPeers.Count == 0)
                 {
-                    LogInfo("没有解析到任何有效监听源。请确认当前 Telegram 账号已经加入对应频道、群组或私聊。");
+                    LogInfo("没有找到可用的 Telegram 监听目标，请检查频道链接和账号加入状态。");
                     SafeDisposeClient();
                     return;
                 }
@@ -147,7 +147,7 @@ public static class TelegramMsgService
 
                 _started = true;
 
-                LogInfo($"Telegram 服务已启动，当前共监听 {_watchedPeers.Count} 个源。");
+                LogInfo($"Telegram 服务已启动，共监听 {_watchedPeers.Count} 个目标。");
                 foreach (var peer in _watchedPeers.Values)
                 {
                     LogInfo($"已监听：{peer.DisplayName}");
@@ -171,6 +171,50 @@ public static class TelegramMsgService
         {
             _startLock.Release();
         }
+    }
+    
+    /// <summary>
+    /// 只允许从完整的 Telegram 公共链接中提取用户名。
+    /// 只接受这种格式：
+    /// https://t.me/xxxx
+    /// 
+    /// 不再支持：
+    /// - @xxxx
+    /// - xxxx
+    /// - 标题名
+    /// - 数字 id
+    /// - 其它域名/其它路径格式
+    /// </summary>
+    private static bool TryExtractUsernameFromTelegramUrl(string value, out string username)
+    {
+        username = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string raw = value.Trim();
+
+        // 只允许 https://t.me/ 开头
+        const string prefix = "https://t.me/";
+        if (!raw.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string remaining = raw[prefix.Length..].Trim();
+
+        // 去掉末尾 /
+        remaining = remaining.Trim('/');
+
+        // 只允许单段用户名，比如 zaihuapd
+        // 不接受 /s/xxx、/joinchat/xxx、/c/xxx 这种路径
+        if (string.IsNullOrWhiteSpace(remaining) || remaining.Contains('/'))
+            return false;
+
+        // 用户名里不应该再带 @
+        if (remaining.StartsWith('@'))
+            return false;
+
+        username = remaining;
+        return true;
     }
 
     private static string? Config(string what)
@@ -344,7 +388,7 @@ public static class TelegramMsgService
             _lastMessageIds[peer.SourceKey] = lastId;
             changed = true;
 
-            LogInfo($"首次启动时，已记录“{peer.DisplayName}”当前最新消息的位置，历史消息不会补发。");
+            LogInfo($"已记录“{peer.DisplayName}”的当前位置，旧消息不会补发。");
         }
 
         if (changed)
@@ -550,13 +594,13 @@ public static class TelegramMsgService
             }
             catch (Exception ex)
             {
-                LogError($"向 QQ 群 {groupId} 推送 Telegram 消息时失败。", ex);
+                LogError($"向群 {groupId} 转发消息失败。", ex);
             }
         }
 
         if (_config?.LogForwardSuccess == true && successCount > 0)
         {
-            LogInfo($"已将“{watchedPeer.DisplayName}”的一条新消息推送到 {successCount} 个 QQ 群。");
+            LogInfo($"“{watchedPeer.DisplayName}”的新消息已转发到 {successCount} 个 QQ 群。");
         }
     }
 
@@ -840,7 +884,7 @@ public static class TelegramMsgService
                 }
                 catch (Exception ex)
                 {
-                    LogError($"发送视频失败，群号: {groupId}，视频: {videoUri}", ex);
+                    LogError($"向群 {groupId} 发送视频失败。", ex);
                 }
 
                 await Task.Delay(1000);
@@ -906,29 +950,34 @@ public static class TelegramMsgService
         return string.IsNullOrWhiteSpace(fullName) ? $"User({user.id})" : fullName;
     }
 
-    private static Dictionary<string, WatchedPeer> ResolveWatchedPeers(
-        IEnumerable<TelegramSourceConfig> sources,
-        IDictionary<long, User> users,
-        IDictionary<long, ChatBase> chats)
+    /// <summary>
+    /// 解析配置文件里的 Telegram 监听源。
+    /// 
+    /// 现在只支持这种配置：
+    /// Value = https://t.me/xxx
+    /// 
+    /// 不再支持 @username、标题名、数字 id。
+    /// </summary>
+    private static async Task<Dictionary<string, WatchedPeer>> ResolveWatchedPeersAsync(
+        IEnumerable<TelegramSourceConfig> sources)
     {
         var result = new Dictionary<string, WatchedPeer>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var source in sources.Where(x => !string.IsNullOrWhiteSpace(x.Value)))
         {
             string type = (source.Type ?? "channel").Trim().ToLowerInvariant();
-            string value = source.Value.Trim();
 
             WatchedPeer? peer = type switch
             {
-                "channel" => ResolveChannel(value, source.Alias, chats),
-                "group" or "chat" => ResolveGroup(value, source.Alias, chats),
-                "user" or "private" => ResolveUser(value, source.Alias, users),
+                "channel" => await ResolveChannelByUrlAsync(source.Value, source.Alias),
+                "group" or "chat" => await ResolveGroupByUrlAsync(source.Value, source.Alias),
+                "user" or "private" => await ResolveUserByUrlAsync(source.Value, source.Alias),
                 _ => null
             };
 
             if (peer == null)
             {
-                LogInfo($"未找到可监听的 Telegram 源：{source.Type}:{source.Value}。请确认当前登录账号已加入该频道、群组或私聊。");
+                LogInfo($"监听目标无效：{source.Value}");
                 continue;
             }
 
@@ -937,17 +986,26 @@ public static class TelegramMsgService
 
         return result;
     }
-
-    private static WatchedPeer? ResolveChannel(string value, string? alias, IDictionary<long, ChatBase> chats)
+    /// <summary>
+    /// 通过完整的 Telegram 公开链接解析频道。
+    /// 只支持：https://t.me/xxx
+    /// </summary>
+    private static async Task<WatchedPeer?> ResolveChannelByUrlAsync(string value, string? alias)
     {
-        string username = value.TrimStart('@');
+        if (_client == null)
+            return null;
 
-        foreach (var (_, chatBase) in chats)
+        if (!TryExtractUsernameFromTelegramUrl(value, out string username))
         {
-            if (chatBase is not Channel channel || !channel.IsActive || !channel.IsChannel)
-                continue;
+            LogInfo($"频道链接格式不正确：{value}");
+            return null;
+        }
 
-            if (MatchesChannel(channel, value, username))
+        try
+        {
+            var resolved = await _client.Contacts_ResolveUsername(username);
+
+            if (resolved.Chat is Channel channel && channel.IsActive && channel.IsChannel)
             {
                 return new WatchedPeer
                 {
@@ -956,55 +1014,96 @@ public static class TelegramMsgService
                     Chat = channel
                 };
             }
+
+            LogInfo($"该链接不是频道：{value}");
+            return null;
+        }
+        catch (TL.RpcException ex)
+        {
+            LogInfo($"无法解析频道：{value}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogError($"解析频道链接时发生异常：{value}", ex);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// 通过完整的 Telegram 公开链接解析群组。
+    /// 只支持：https://t.me/xxx
+    /// </summary>
+    private static async Task<WatchedPeer?> ResolveGroupByUrlAsync(string value, string? alias)
+    {
+        if (_client == null)
+            return null;
+
+        if (!TryExtractUsernameFromTelegramUrl(value, out string username))
+        {
+            LogInfo($"群组链接格式不正确：{value}");
+            return null;
         }
 
-        return null;
-    }
-
-    private static WatchedPeer? ResolveGroup(string value, string? alias, IDictionary<long, ChatBase> chats)
-    {
-        string username = value.TrimStart('@');
-
-        foreach (var (_, chatBase) in chats)
+        try
         {
-            switch (chatBase)
+            var resolved = await _client.Contacts_ResolveUsername(username);
+
+            switch (resolved.Chat)
             {
                 case Channel channel when channel.IsActive && !channel.IsChannel:
-                    if (MatchesChannel(channel, value, username))
+                    return new WatchedPeer
                     {
-                        return new WatchedPeer
-                        {
-                            SourceKey = $"channel:{channel.id}",
-                            DisplayName = string.IsNullOrWhiteSpace(alias) ? channel.Title : alias,
-                            Chat = channel
-                        };
-                    }
-                    break;
+                        SourceKey = $"channel:{channel.id}",
+                        DisplayName = string.IsNullOrWhiteSpace(alias) ? channel.Title : alias,
+                        Chat = channel
+                    };
 
                 case Chat chat when chat.IsActive:
-                    if (MatchesChat(chat, value))
+                    return new WatchedPeer
                     {
-                        return new WatchedPeer
-                        {
-                            SourceKey = $"chat:{chat.id}",
-                            DisplayName = string.IsNullOrWhiteSpace(alias) ? chat.Title : alias,
-                            Chat = chat
-                        };
-                    }
-                    break;
+                        SourceKey = $"chat:{chat.id}",
+                        DisplayName = string.IsNullOrWhiteSpace(alias) ? chat.Title : alias,
+                        Chat = chat
+                    };
+
+                default:
+                    LogInfo($"该链接不是群组：{value}");
+                    return null;
             }
         }
-
-        return null;
-    }
-
-    private static WatchedPeer? ResolveUser(string value, string? alias, IDictionary<long, User> users)
-    {
-        string username = value.TrimStart('@');
-
-        foreach (var (_, user) in users)
+        catch (TL.RpcException ex)
         {
-            if (MatchesUser(user, value, username))
+            LogInfo($"无法解析群组：{value}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogError($"解析群组链接时发生异常：{value}", ex);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// 通过完整的 Telegram 公开链接解析用户。
+    /// 只支持：https://t.me/xxx
+    /// </summary>
+    private static async Task<WatchedPeer?> ResolveUserByUrlAsync(string value, string? alias)
+    {
+        if (_client == null)
+            return null;
+
+        if (!TryExtractUsernameFromTelegramUrl(value, out string username))
+        {
+            LogInfo($"用户链接格式不正确：{value}");
+            return null;
+        }
+
+        try
+        {
+            var resolved = await _client.Contacts_ResolveUsername(username);
+
+            if (resolved.User is User user)
             {
                 return new WatchedPeer
                 {
@@ -1013,51 +1112,20 @@ public static class TelegramMsgService
                     User = user
                 };
             }
+
+            LogInfo($"该链接不是用户：{value}");
+            return null;
         }
-
-        return null;
-    }
-
-    private static bool MatchesChannel(Channel channel, string rawValue, string username)
-    {
-        if (long.TryParse(rawValue, out long numericId) && channel.id == numericId)
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(channel.username)
-            && string.Equals(channel.username, username, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (string.Equals(channel.Title, rawValue, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
-
-    private static bool MatchesChat(Chat chat, string rawValue)
-    {
-        if (long.TryParse(rawValue, out long numericId) && chat.id == numericId)
-            return true;
-
-        if (string.Equals(chat.Title, rawValue, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
-
-    private static bool MatchesUser(User user, string rawValue, string username)
-    {
-        if (long.TryParse(rawValue, out long numericId) && user.id == numericId)
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(user.username)
-            && string.Equals(user.username, username, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        string fullName = $"{user.first_name} {user.last_name}".Trim();
-        if (string.Equals(fullName, rawValue, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        catch (TL.RpcException ex)
+        {
+            LogInfo($"无法解析用户：{value}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogError($"解析用户链接时发生异常：{value}", ex);
+            return null;
+        }
     }
 
     private static string? GetPeerKey(Peer? peer)
@@ -1258,17 +1326,23 @@ public static class TelegramMsgService
             WriteConsoleLine_NoLock(entry.Text, entry.IsError);
         }
     }
-
+    
+    /// <summary>
+    /// 输出普通日志。
+    /// 日志前缀统一使用 [TG]，尽量只保留关键流程信息。
+    /// </summary>
     private static void LogInfo(string message)
     {
-        WriteConsoleLine($"[TelegramMsg][{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
+        WriteConsoleLine($"[TG] {message}");
     }
 
+    /// <summary>
+    /// 输出异常日志。
+    /// 第一行使用简短中文说明，第二行再附异常详情，方便排查。
+    /// </summary>
     private static void LogError(string scene, Exception ex)
     {
-        string text =
-            $"[TelegramMsg][{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {scene}{Environment.NewLine}{ex}";
-
+        string text = $"[TG] {scene}{Environment.NewLine}{ex}";
         WriteConsoleLine(text, isError: true);
     }
 
@@ -1410,7 +1484,7 @@ public static class TelegramMsgService
 
         if (rawMessage.Contains("A verification code has been sent", StringComparison.OrdinalIgnoreCase))
         {
-            readableMessage = "Telegram 验证码已发送，请查看 Telegram 客户端后输入验证码。";
+            readableMessage = "验证码已发送，请查看 Telegram 后输入。";
             return true;
         }
 
@@ -1422,7 +1496,7 @@ public static class TelegramMsgService
 
         if (rawMessage.Contains("PHONE_MIGRATE_", StringComparison.OrdinalIgnoreCase))
         {
-            readableMessage = "正在切换到当前账号对应的 Telegram 服务器。";
+            readableMessage = "正在切换到正确的 Telegram 服务器。";
             return true;
         }
 
