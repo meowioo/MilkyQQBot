@@ -415,4 +415,198 @@ public static class DatabaseManager
         command.Parameters.AddWithValue("@UserId", userId);
         command.ExecuteNonQuery();
     }
+    
+    /// <summary>
+    /// 获取“适合喂给 AI”的最近群消息。
+    /// 与 GetRecentGroupMessagesFormatted 的区别：
+    /// 这里会把图片、表情、@、回复等 segment 也转成可读上下文，而不是只保留纯文本。
+    /// </summary>
+    public static List<string> GetRecentGroupMessagesForAi(long groupId, int limit = 12)
+    {
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT MessageSeq, SenderId, SenderNickname, RawSegmentsJson
+        FROM GroupMessages
+        WHERE GroupId = @GroupId
+        ORDER BY ReceiveTime DESC
+        LIMIT @Limit";
+
+        command.Parameters.AddWithValue("@GroupId", groupId);
+        command.Parameters.AddWithValue("@Limit", limit);
+
+        using var reader = command.ExecuteReader();
+
+        var tempList = new List<string>();
+
+        while (reader.Read())
+        {
+            long messageSeq = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+            long senderId = reader.GetInt64(1);
+            string nickname = reader.IsDBNull(2) ? "未知用户" : reader.GetString(2);
+            string rawJson = reader.IsDBNull(3) ? "[]" : reader.GetString(3);
+
+            string formattedContent = FormatSegmentsForAi(groupId, messageSeq, rawJson);
+
+            if (!string.IsNullOrWhiteSpace(formattedContent))
+            {
+                tempList.Add($"[{senderId}][{nickname}]:{formattedContent}");
+            }
+        }
+
+        // 数据库里是倒序取的，喂给 AI 前翻转回正序
+        tempList.Reverse();
+        return tempList;
+    }
+
+    /// <summary>
+    /// 将一条消息的 RawSegmentsJson 转成适合给 AI 看的可读文本。
+    /// 例如：
+    /// - text -> 原样文本
+    /// - image -> [图片]
+    /// - face -> [表情]
+    /// - mention -> [@123456]
+    /// - reply -> [回复: xxx]
+    /// </summary>
+    private static string FormatSegmentsForAi(long groupId, long currentMessageSeq, string rawJson)
+    {
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+
+            using var doc = JsonDocument.Parse(rawJson);
+
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                string type = element.TryGetProperty("type", out var t)
+                    ? t.GetString() ?? ""
+                    : "";
+
+                if (!element.TryGetProperty("data", out var data))
+                {
+                    data = default;
+                }
+
+                switch (type)
+                {
+                    case "text":
+                    {
+                        if (data.ValueKind != JsonValueKind.Undefined &&
+                            data.TryGetProperty("text", out var textProp))
+                        {
+                            sb.Append(textProp.GetString());
+                        }
+                        break;
+                    }
+
+                    case "image":
+                    {
+                        // 第一版不做图片识别，先只告诉 AI 这里有图
+                        AppendWithSpace(sb, "[图片]");
+                        break;
+                    }
+
+                    case "face":
+                    {
+                        AppendWithSpace(sb, "[表情]");
+                        break;
+                    }
+
+                    case "mention":
+                    {
+                        long userId = 0;
+                        if (data.ValueKind != JsonValueKind.Undefined &&
+                            data.TryGetProperty("user_id", out var userIdProp) &&
+                            userIdProp.TryGetInt64(out var parsedUserId))
+                        {
+                            userId = parsedUserId;
+                        }
+
+                        AppendWithSpace(sb, userId > 0 ? $"[@{userId}]" : "[@某人]");
+                        break;
+                    }
+
+                    case "mention_all":
+                    {
+                        AppendWithSpace(sb, "[@全体成员]");
+                        break;
+                    }
+
+                    case "reply":
+                    {
+                        long replySeq = 0;
+                        if (data.ValueKind != JsonValueKind.Undefined &&
+                            data.TryGetProperty("message_seq", out var seqProp) &&
+                            seqProp.TryGetInt64(out var parsedSeq))
+                        {
+                            replySeq = parsedSeq;
+                        }
+
+                        string replyText = BuildReplyHint(groupId, replySeq);
+                        AppendWithSpace(sb, replyText);
+                        break;
+                    }
+                }
+            }
+
+            string result = sb.ToString();
+
+            // 去掉 URL，避免上下文里塞太多链接
+            result = UrlRegex.Replace(result, "").Trim();
+
+            // 压缩多余空白
+            result = Regex.Replace(result, @"\s+", " ").Trim();
+
+            return result;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// 将 reply segment 转成简短提示。
+    /// 如果能查到被回复的消息，就带一点摘要；查不到则保留为通用占位。
+    /// </summary>
+    private static string BuildReplyHint(long groupId, long replySeq)
+    {
+        if (replySeq <= 0)
+            return "[回复某条消息]";
+
+        var replied = GetMessageBySeq(groupId, replySeq);
+
+        if (string.IsNullOrWhiteSpace(replied.PlainText))
+            return "[回复某条消息]";
+
+        string snippet = replied.PlainText.Trim();
+
+        // 截断一下，避免回复提示太长污染上下文
+        if (snippet.Length > 18)
+        {
+            snippet = snippet[..18] + "…";
+        }
+
+        if (!string.IsNullOrWhiteSpace(replied.Nickname))
+        {
+            return $"[回复 {replied.Nickname}: {snippet}]";
+        }
+
+        return $"[回复: {snippet}]";
+    }
+
+    /// <summary>
+    /// 往 StringBuilder 里追加一个带空格分隔的片段，避免标记黏连。
+    /// </summary>
+    private static void AppendWithSpace(System.Text.StringBuilder sb, string value)
+    {
+        if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1]))
+        {
+            sb.Append(' ');
+        }
+
+        sb.Append(value);
+    }
 }

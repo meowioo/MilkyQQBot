@@ -42,6 +42,7 @@ public static class ChatAiEntry
                     milky,
                     state,
                     input,
+                    conv,
                     pureTextForAi,
                     triggerDecision.Reason);
             }
@@ -106,20 +107,33 @@ public static class ChatAiEntry
         MilkyClient milky,
         BotRuntimeState state,
         ChatAiInput input,
+        GroupConversationState conv,
         string pureTextForAi,
         string triggerReason)
     {
         Console.WriteLine($"[AI触发] 群 {input.GroupId} 满足条件，原因：{triggerReason}");
 
-        List<string> history = LegacyHistoryBuilder.Build(input, pureTextForAi);
+        // 使用 V2ContextBuilder 构造更贴近群聊结构的上下文
+        List<string> history = V2ContextBuilder.Build(input, conv);
         string aiReply = await AiChatService.GetAiResponseAsync(history);
 
         if (string.IsNullOrWhiteSpace(aiReply))
             return;
 
-        
         aiReply = aiReply.Trim();
-        
+
+        // 先尝试把“太像 AI 的回复”压成更短、更口语的句子
+        var rewriteResult = ResponseRewriter.Rewrite(aiReply);
+        aiReply = rewriteResult.FinalText;
+
+        // 打日志，方便观察重写器有没有生效
+        if (rewriteResult.WasRewritten)
+        {
+            Console.WriteLine($"[AI重写] 原始: {rewriteResult.OriginalText}");
+            Console.WriteLine($"[AI重写] 结果: {rewriteResult.FinalText}");
+        }
+
+        // 重写后再走原有风格护栏
         var styleGuardResult = ResponseStyleGuard.Evaluate(aiReply);
         if (styleGuardResult.ShouldBlock)
         {

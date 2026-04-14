@@ -25,21 +25,41 @@ public static class BotEventRegistrar
                     long groupId = e.Data.PeerId;
                     long messageSeq = e.Data.MessageSeq;
 
+                    // senderId: 被撤回消息原本的发送者
+                    // operatorId: 实际执行撤回操作的人
+                    long senderId = e.Data.SenderId;
+                    long operatorId = e.Data.OperatorId;
+
                     var config = GroupConfigManager.GetConfig(groupId);
                     if (!config.AntiRecallEnabled) return;
+
+                    // 只处理“发送者自己撤回自己消息”的情况。
+                    // 如果 senderId != operatorId，说明这是管理员/群主代撤，
+                    // 这种情况不需要防撤回，直接跳过。
+                    //
+                    // 注意：
+                    // 管理员自己撤回自己的消息时，senderId == operatorId，
+                    // 仍然会继续走下面的防撤回逻辑，符合你的需求。
+                    if (senderId != operatorId)
+                    {
+                        Console.WriteLine(
+                            $"[防撤回跳过] 群 {groupId} 中消息 {messageSeq} 为管理员代撤，发送者={senderId}，操作者={operatorId}"
+                        );
+                        return;
+                    }
 
                     var msgData = DatabaseManager.GetMessageBySeq(groupId, messageSeq);
 
                     if (!string.IsNullOrEmpty(msgData.Nickname))
                     {
                         var outgoingSegments = new List<OutgoingSegment>();
-
                         string alertText = $"已拦截到 [{msgData.Nickname}] 撤回的消息：\n";
                         outgoingSegments.Add(new OutgoingSegment<TextOutgoingSegmentData>(new(alertText)));
 
                         try
                         {
                             using var doc = JsonDocument.Parse(msgData.RawSegmentsJson);
+
                             foreach (var element in doc.RootElement.EnumerateArray())
                             {
                                 string type = element.TryGetProperty("Type", out var typeProp)
@@ -61,6 +81,7 @@ public static class BotEventRegistrar
                                         : dataProp.TryGetProperty("text", out tProp)
                                             ? tProp.GetString()
                                             : "";
+
                                     outgoingSegments.Add(new OutgoingSegment<TextOutgoingSegmentData>(new(text)));
                                 }
                                 else if (type == "image")
@@ -70,6 +91,7 @@ public static class BotEventRegistrar
                                         : dataProp.TryGetProperty("url", out uProp)
                                             ? uProp.GetString()
                                             : "";
+
                                     if (!string.IsNullOrEmpty(url))
                                     {
                                         outgoingSegments.Add(new OutgoingSegment<ImageOutgoingSegmentData>(new(new(url), null)));
