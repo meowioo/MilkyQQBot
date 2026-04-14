@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Milky.Net.Client;
 using Milky.Net.Model;
 using MilkyQQBot.Features.ChatAi.Legacy;
+using MilkyQQBot.Features.ChatAi.V2;
 using MilkyQQBot.Features.ChatAi.V2.Models;
 using MilkyQQBot.Services;
 
@@ -20,7 +21,9 @@ public static class ChatAiEntry
         if (ShouldSkip(config, input, pureTextForAi))
             return;
 
-        var triggerDecision = LegacyTrigger.Evaluate(input);
+        List<string> recentMessages = DatabaseManager.GetRecentGroupMessagesFormatted(input.GroupId, 3);
+        var triggerDecision = V2Trigger.Evaluate(input, state, recentMessages);
+
         if (!triggerDecision.ShouldTrigger)
             return;
 
