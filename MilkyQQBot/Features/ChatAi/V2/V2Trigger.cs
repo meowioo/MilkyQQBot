@@ -24,12 +24,20 @@ public static class V2Trigger
             }
         }
 
-        // 新一轮讨论正在形成：至少2个参与者，至少3条人类消息
+        // 正常群聊触发：至少2个参与者，至少3条人类消息
         if (!conv.BotEngaged &&
             conv.RecentParticipantIds.Count >= 2 &&
             conv.RecentHumanMessageCount >= 3)
         {
             return V2TriggerDecision.Trigger("新话题形成");
+        }
+
+        // 单人测试兜底：同一个人连续发了3条以上，也允许触发一次
+        if (!conv.BotEngaged &&
+            conv.RecentParticipantIds.Count == 1 &&
+            conv.RecentHumanMessageCount >= 3)
+        {
+            return V2TriggerDecision.Trigger("单人连续发言测试");
         }
 
         // 机器人已经参与这轮讨论后，允许跟进一次

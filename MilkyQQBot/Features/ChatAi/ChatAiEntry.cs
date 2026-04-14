@@ -26,7 +26,10 @@ public static class ChatAiEntry
         var triggerDecision = V2Trigger.Evaluate(input, state, conv, recentMessages);
 
         if (!triggerDecision.ShouldTrigger)
+        {
+            Console.WriteLine($"[AI未触发] 群 {input.GroupId}，原因：{triggerDecision.Reason}");
             return;
+        }
 
         if (!TryEnterThinking(state, input.GroupId, input.IsBotMentioned, out _))
             return;
