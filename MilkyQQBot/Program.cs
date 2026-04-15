@@ -2,6 +2,7 @@
 using MilkyQQBot;
 using MilkyQQBot.Commands;
 using MilkyQQBot.Events;
+using MilkyQQBot.Features.ChatAi.V2.Vision;
 using MilkyQQBot.Game;
 using MilkyQQBot.Services;
 
@@ -25,6 +26,21 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 DatabaseManager.Initialize();
 GameRepository.Initialize();
 GroupConfigManager.Load();
+
+// 图片摘要后台 worker
+// 这里先直接复用你现有的 AI 接口配置。
+// 注意：这里的 model 必须换成“支持图片输入”的视觉模型。
+var httpClient = new HttpClient();
+
+var imageSummaryProvider = new OpenAiImageSummaryProvider(
+    httpClient,
+    AppConfig.Current.Ai.Vision.ApiUrl,
+    AppConfig.Current.Ai.Vision.ApiKey,
+    AppConfig.Current.Ai.Vision.Model // 这里请改成支持视觉输入的模型名
+);
+
+ImageSummaryWorker.Start(imageSummaryProvider);
+Console.WriteLine("[图片摘要Worker] 已启动");
 
 // 从配置读取
 var botConfig = AppConfig.Current.Bot;

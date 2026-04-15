@@ -76,9 +76,21 @@ public static class IncomingMessageService
                         break;
                     }
                     case IncomingSegment<ImageIncomingSegmentData> imgSeg:
+                    {
+                        string imageUrl = imgSeg.Data?.TempUrl ?? "";
+
                         fullMessageBuilder.Append("[图片]");
-                        simplifiedSegments.Add(new { type = "image", data = new { url = imgSeg.Data.TempUrl } });
+                        simplifiedSegments.Add(new { type = "image", data = new { url = imageUrl } });
+
+                        // 收到图片时，先把它登记到图片摘要缓存表
+                        // 这一步不阻塞主流程，也不要求现在就有视觉模型
+                        if (!string.IsNullOrWhiteSpace(imageUrl))
+                        {
+                            DatabaseManager.EnqueueImageSummary(imageUrl);
+                        }
+
                         break;
+                    }
 
                     case IncomingSegment<FaceIncomingSegmentData> faceSeg:
                         fullMessageBuilder.Append("[表情]");

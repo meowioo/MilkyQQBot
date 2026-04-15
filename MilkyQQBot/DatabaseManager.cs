@@ -505,8 +505,22 @@ public static class DatabaseManager
 
                     case "image":
                     {
-                        // 第一版不做图片识别，先只告诉 AI 这里有图
-                        AppendWithSpace(sb, "[图片]");
+                        string imageHint = "[发了一张图片]";
+
+                        if (data.ValueKind != JsonValueKind.Undefined &&
+                            data.TryGetProperty("url", out var urlProp))
+                        {
+                            string imageUrl = urlProp.GetString() ?? "";
+
+                            // 优先读取缓存摘要
+                            string? summary = GetImageSummary(imageUrl);
+                            if (!string.IsNullOrWhiteSpace(summary))
+                            {
+                                imageHint = $"[图片摘要: {summary}]";
+                            }
+                        }
+
+                        AppendWithSpace(sb, imageHint);
                         break;
                     }
 
@@ -750,4 +764,215 @@ public static class DatabaseManager
         [324] = "[发了吃糖表情]",
         [326] = "[发了生气表情]"
     };
+    
+    /// <summary>
+    /// 收到图片时，向图片摘要缓存表里登记一条“待处理”记录。
+    /// 如果同一个 URL 已存在，则忽略，避免重复插入。
+    /// </summary>
+    public static void EnqueueImageSummary(string imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return;
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        INSERT INTO ImageSummaries (ImageUrl, Summary, Status, CreatedAt, UpdatedAt)
+        VALUES (@ImageUrl, NULL, 'pending', @Now, @Now)
+        ON CONFLICT(ImageUrl) DO NOTHING;";
+
+        string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+        command.Parameters.AddWithValue("@Now", now);
+
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 根据图片 URL 读取已缓存的摘要。
+    /// 只有状态为 done 且摘要非空时才返回。
+    /// </summary>
+    public static string? GetImageSummary(string imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return null;
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT Summary
+        FROM ImageSummaries
+        WHERE ImageUrl = @ImageUrl
+          AND Status = 'done'
+          AND Summary IS NOT NULL
+        LIMIT 1;";
+
+        command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+
+        object? result = command.ExecuteScalar();
+        if (result == null || result == DBNull.Value)
+            return null;
+
+        string summary = result.ToString() ?? "";
+        return string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+    }
+
+    /// <summary>
+    /// 手动或异步任务完成后，写回图片摘要并标记为 done。
+    /// 后面你接视觉模型时，最终也是调用这个方法。
+    /// </summary>
+    public static void SaveImageSummary(string imageUrl, string summary)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl) || string.IsNullOrWhiteSpace(summary))
+            return;
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        INSERT INTO ImageSummaries (ImageUrl, Summary, Status, CreatedAt, UpdatedAt)
+        VALUES (@ImageUrl, @Summary, 'done', @Now, @Now)
+        ON CONFLICT(ImageUrl) DO UPDATE SET
+            Summary = excluded.Summary,
+            Status = 'done',
+            UpdatedAt = excluded.UpdatedAt;";
+
+        string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+        command.Parameters.AddWithValue("@Summary", summary.Trim());
+        command.Parameters.AddWithValue("@Now", now);
+
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 标记图片摘要生成失败。
+    /// 以后你接异步视觉任务时，失败也能留下状态。
+    /// </summary>
+    public static void MarkImageSummaryFailed(string imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return;
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        UPDATE ImageSummaries
+        SET Status = 'failed',
+            UpdatedAt = @Now
+        WHERE ImageUrl = @ImageUrl;";
+
+        string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+        command.Parameters.AddWithValue("@Now", now);
+
+        command.ExecuteNonQuery();
+    }
+    
+    /// <summary>
+    /// 读取最近待处理的图片 URL，方便你调试或手动补摘要。
+    /// </summary>
+    public static List<string> GetPendingImageUrls(int limit = 10)
+    {
+        var result = new List<string>();
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT ImageUrl
+        FROM ImageSummaries
+        WHERE Status = 'pending'
+        ORDER BY CreatedAt DESC
+        LIMIT @Limit;";
+
+        command.Parameters.AddWithValue("@Limit", limit);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            string imageUrl = reader.IsDBNull(0) ? "" : reader.GetString(0);
+            if (!string.IsNullOrWhiteSpace(imageUrl))
+            {
+                result.Add(imageUrl);
+            }
+        }
+
+        return result;
+    }
+    
+    /// <summary>
+    /// 取最近待处理的图片 URL。
+    /// 后台 worker 周期性扫描时会用到。
+    /// </summary>
+    public static List<string> GetPendingImageSummaryUrls(int limit = 5)
+    {
+        var result = new List<string>();
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT ImageUrl
+        FROM ImageSummaries
+        WHERE Status = 'pending'
+        ORDER BY CreatedAt ASC
+        LIMIT @Limit;";
+
+        command.Parameters.AddWithValue("@Limit", limit);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            string imageUrl = reader.IsDBNull(0) ? "" : reader.GetString(0);
+            if (!string.IsNullOrWhiteSpace(imageUrl))
+            {
+                result.Add(imageUrl);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 尝试把一条 pending 图片任务抢占为 running。
+    /// 返回 true 表示当前 worker 抢占成功，可以开始处理。
+    /// 返回 false 表示它已经被别的 worker 处理了，或者状态不是 pending。
+    /// </summary>
+    public static bool TryMarkImageSummaryRunning(string imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return false;
+
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        UPDATE ImageSummaries
+        SET Status = 'running',
+            UpdatedAt = @Now
+        WHERE ImageUrl = @ImageUrl
+          AND Status = 'pending';";
+
+        string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+        command.Parameters.AddWithValue("@Now", now);
+
+        int affected = command.ExecuteNonQuery();
+        return affected > 0;
+    }
 }

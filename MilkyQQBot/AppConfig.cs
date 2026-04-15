@@ -31,6 +31,8 @@ public class AiConfig
     public AiProviderConfig Chat { get; set; } = new();
     public AiProviderConfig Physiognomy { get; set; } = new();
     public AiProviderConfig AvatarPk { get; set; } = new();
+    
+    public AiProviderConfig Vision { get; set; } = new();
 }
 
 public class AiProviderConfig
