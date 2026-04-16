@@ -68,6 +68,11 @@ public static class ImageSummaryWorker
         {
             try
             {
+                int resetCount = DatabaseManager.ResetStaleRunningImageSummaries(10);
+                if (resetCount > 0)
+                {
+                    Console.WriteLine($"[图片摘要Worker] 已重置 {resetCount} 条卡住的 running 任务。");
+                }
                 var pendingUrls = DatabaseManager.GetPendingImageSummaryUrls(3);
 
                 // 没任务时稍微睡久一点

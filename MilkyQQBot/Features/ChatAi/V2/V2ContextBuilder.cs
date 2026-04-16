@@ -46,4 +46,22 @@ public static class V2ContextBuilder
         // 单人测试或普通弱触发
         return 8;
     }
+
+    /// <summary>
+    /// 给触发器使用的最近消息窗口。
+    /// 这里也走增强版上下文，而不是旧的纯文本历史。
+    /// 这样触发器至少能感知到“图片 / 表情 / 回复”这些占位信息。
+    /// </summary>
+    public static List<string> BuildForTrigger(ChatAiInput input, int limit = 3)
+    {
+        var context = DatabaseManager.GetRecentGroupMessagesForAi(input.GroupId, limit);
+
+        // 兜底：如果数据库里还没形成历史，就补上当前消息
+        if (context.Count == 0 && !string.IsNullOrWhiteSpace(input.PlainText))
+        {
+            context.Add($"[{input.SenderId}][{input.SenderNickname}]:{input.PlainText.Trim()}");
+        }
+
+        return context;
+    }
 }

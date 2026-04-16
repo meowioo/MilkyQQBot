@@ -21,44 +21,61 @@ public static class DatabaseManager
         connection.Open();
 
         var command = connection.CreateCommand();
+
         // 1. 群消息表
         command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS GroupMessages (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                MessageSeq INTEGER,
-                GroupId INTEGER,
-                SenderId INTEGER,
-                SenderNickname TEXT,
-                PlainText TEXT,
-                RawSegmentsJson TEXT,
-                ReceiveTime DATETIME
-            );
-            CREATE INDEX IF NOT EXISTS idx_group_time ON GroupMessages(GroupId, ReceiveTime);
-        ";
-        command.ExecuteNonQuery();
-        
-        // 2. 创建 Steam 绑定表
-        command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS SteamBindings (
-                QQId INTEGER PRIMARY KEY,
-                SteamId TEXT NOT NULL
-            );
-        ";
+        CREATE TABLE IF NOT EXISTS GroupMessages (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            MessageSeq INTEGER,
+            GroupId INTEGER,
+            SenderId INTEGER,
+            SenderNickname TEXT,
+            PlainText TEXT,
+            RawSegmentsJson TEXT,
+            ReceiveTime DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_group_time ON GroupMessages(GroupId, ReceiveTime);
+    ";
         command.ExecuteNonQuery();
 
-        // 3. 创建 深网查询权限表 (新增加的表)
+        // 2. Steam 绑定表
         command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS QueryPermissions (
-                UserId INTEGER PRIMARY KEY,
-                RemainingCount INTEGER DEFAULT 0
-            );
-        ";
+        CREATE TABLE IF NOT EXISTS SteamBindings (
+            QQId INTEGER PRIMARY KEY,
+            SteamId TEXT NOT NULL
+        );
+    ";
+        command.ExecuteNonQuery();
+
+        // 3. 深网查询权限表
+        command.CommandText = @"
+        CREATE TABLE IF NOT EXISTS QueryPermissions (
+            UserId INTEGER PRIMARY KEY,
+            RemainingCount INTEGER DEFAULT 0
+        );
+    ";
+        command.ExecuteNonQuery();
+
+        // 4. 图片摘要缓存表
+        command.CommandText = @"
+    CREATE TABLE IF NOT EXISTS ImageSummaries (
+        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ImageUrl TEXT NOT NULL UNIQUE,
+        Summary TEXT,
+        Status TEXT NOT NULL,
+        RetryCount INTEGER NOT NULL DEFAULT 0,
+        CreatedAt DATETIME NOT NULL,
+        UpdatedAt DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_image_summary_status
+    ON ImageSummaries(Status);
+";
         command.ExecuteNonQuery();
 
         command.CommandText = "PRAGMA journal_mode=WAL;";
         command.ExecuteNonQuery();
 
-        Console.WriteLine("[数据库] 群消息表、Steam绑定表、权限表就绪，已开启 WAL 高性能高并发模式。");
+        Console.WriteLine("[数据库] 群消息表、Steam绑定表、权限表、图片摘要表就绪，已开启 WAL 高性能高并发模式。");
 
         StartAutoCleanupTask();
     }
@@ -109,6 +126,11 @@ public static class DatabaseManager
             while (await timer.WaitForNextTickAsync())
             {
                 CleanUpOldMessages();
+                int deletedImageSummaries = DeleteOldImageSummaries(7);
+                if (deletedImageSummaries > 0)
+                {
+                    Console.WriteLine($"[数据库自动清理] 删除了 {deletedImageSummaries} 条过期图片摘要缓存。");
+                }
             }
         });
     }
@@ -437,7 +459,8 @@ public static class DatabaseManager
         LIMIT @Limit";
 
         command.Parameters.AddWithValue("@GroupId", groupId);
-        command.Parameters.AddWithValue("@Limit", limit);
+        
+        command.Parameters.AddWithValue("@Limit", limit * 2);
 
         using var reader = command.ExecuteReader();
 
@@ -526,7 +549,19 @@ public static class DatabaseManager
 
                     case "face":
                     {
-                        AppendWithSpace(sb, "[表情]");
+                        string faceText = "[发了表情]";
+
+                        if (data.ValueKind != JsonValueKind.Undefined &&
+                            data.TryGetProperty("id", out var faceIdProp))
+                        {
+                            string faceIdRaw = faceIdProp.GetString() ?? "";
+                            if (int.TryParse(faceIdRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int faceId))
+                            {
+                                faceText = MapFaceIdToHint(faceId);
+                            }
+                        }
+
+                        AppendWithSpace(sb, faceText);
                         break;
                     }
 
@@ -854,9 +889,10 @@ public static class DatabaseManager
 
     /// <summary>
     /// 标记图片摘要生成失败。
-    /// 以后你接异步视觉任务时，失败也能留下状态。
+    /// 失败次数少于阈值时，回退到 pending，允许后续重试。
+    /// 超过阈值后才真正标成 failed。
     /// </summary>
-    public static void MarkImageSummaryFailed(string imageUrl)
+    public static void MarkImageSummaryFailed(string imageUrl, int maxRetryCount = 3)
     {
         if (string.IsNullOrWhiteSpace(imageUrl))
             return;
@@ -867,50 +903,23 @@ public static class DatabaseManager
         using var command = connection.CreateCommand();
         command.CommandText = @"
         UPDATE ImageSummaries
-        SET Status = 'failed',
+        SET RetryCount = RetryCount + 1,
+            Status = CASE
+                WHEN RetryCount + 1 >= @MaxRetryCount THEN 'failed'
+                ELSE 'pending'
+            END,
             UpdatedAt = @Now
         WHERE ImageUrl = @ImageUrl;";
 
         string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
         command.Parameters.AddWithValue("@ImageUrl", imageUrl);
+        command.Parameters.AddWithValue("@MaxRetryCount", maxRetryCount);
         command.Parameters.AddWithValue("@Now", now);
 
         command.ExecuteNonQuery();
     }
     
-    /// <summary>
-    /// 读取最近待处理的图片 URL，方便你调试或手动补摘要。
-    /// </summary>
-    public static List<string> GetPendingImageUrls(int limit = 10)
-    {
-        var result = new List<string>();
-
-        using var connection = new SqliteConnection(DbPath);
-        connection.Open();
-
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
-        SELECT ImageUrl
-        FROM ImageSummaries
-        WHERE Status = 'pending'
-        ORDER BY CreatedAt DESC
-        LIMIT @Limit;";
-
-        command.Parameters.AddWithValue("@Limit", limit);
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            string imageUrl = reader.IsDBNull(0) ? "" : reader.GetString(0);
-            if (!string.IsNullOrWhiteSpace(imageUrl))
-            {
-                result.Add(imageUrl);
-            }
-        }
-
-        return result;
-    }
     
     /// <summary>
     /// 取最近待处理的图片 URL。
@@ -974,5 +983,51 @@ public static class DatabaseManager
 
         int affected = command.ExecuteNonQuery();
         return affected > 0;
+    }
+    
+    /// <summary>
+    /// 把长时间卡在 running 的任务重置回 pending。
+    /// 例如程序异常退出后，某些任务会永远留在 running。
+    /// </summary>
+    public static int ResetStaleRunningImageSummaries(int staleMinutes = 10)
+    {
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        UPDATE ImageSummaries
+        SET Status = 'pending',
+            UpdatedAt = @Now
+        WHERE Status = 'running'
+          AND UpdatedAt < @StaleTime;";
+
+        string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        string staleTime = DateTime.Now.AddMinutes(-staleMinutes).ToString("yyyy-MM-dd HH:mm:ss");
+
+        command.Parameters.AddWithValue("@Now", now);
+        command.Parameters.AddWithValue("@StaleTime", staleTime);
+
+        return command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 清理过旧的图片摘要缓存。
+    /// 临时图片 URL 往往会过期，太老的数据留着意义不大。
+    /// </summary>
+    public static int DeleteOldImageSummaries(int olderThanDays = 7)
+    {
+        using var connection = new SqliteConnection(DbPath);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        DELETE FROM ImageSummaries
+        WHERE UpdatedAt < @LimitTime;";
+
+        string limitTime = DateTime.Now.AddDays(-olderThanDays).ToString("yyyy-MM-dd HH:mm:ss");
+        command.Parameters.AddWithValue("@LimitTime", limitTime);
+
+        return command.ExecuteNonQuery();
     }
 }

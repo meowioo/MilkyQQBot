@@ -3,6 +3,7 @@ using Milky.Net.Client;
 using Milky.Net.Model;
 using MilkyQQBot.Features.ChatAi.V2;
 using MilkyQQBot.Features.ChatAi.V2.Models;
+using MilkyQQBot.Features.ChatAi.V2.Persona;
 using MilkyQQBot.Services;
 
 namespace MilkyQQBot.Features.ChatAi;
@@ -21,7 +22,9 @@ public static class ChatAiEntry
             return;
                 
         var conv = ConversationTracker.Observe(state, input);
-        List<string> recentMessages = DatabaseManager.GetRecentGroupMessagesFormatted(input.GroupId, 3);
+        // 触发器也使用增强版上下文，而不是旧的纯文本历史
+        // 这样至少能感知到 [图片摘要] / [表情] / [回复 xxx] 这些信息
+        List<string> recentMessages = V2ContextBuilder.BuildForTrigger(input, 3);
         var triggerDecision = V2Trigger.Evaluate(input, state, conv, recentMessages);
 
         if (!triggerDecision.ShouldTrigger)
@@ -42,7 +45,6 @@ public static class ChatAiEntry
                     state,
                     input,
                     conv,
-                    pureTextForAi,
                     triggerDecision.Reason);
             }
             catch (Exception aiEx)
@@ -107,14 +109,19 @@ public static class ChatAiEntry
         BotRuntimeState state,
         ChatAiInput input,
         GroupConversationState conv,
-        string pureTextForAi,
         string triggerReason)
     {
         Console.WriteLine($"[AI触发] 群 {input.GroupId} 满足条件，原因：{triggerReason}");
 
         // 使用 V2ContextBuilder 构造更贴近群聊结构的上下文
         List<string> history = V2ContextBuilder.Build(input, conv);
-        string aiReply = await AiChatService.GetAiResponseAsync(history);
+
+        // 构造本次对话的人格 prompt
+        var persona = DefaultPersonaProfiles.GroupFriend;
+        string systemPrompt = PersonaPromptBuilder.Build(persona, input, conv, triggerReason);
+
+        // 使用“带人格 prompt”的 AI 调用
+        string aiReply = await AiChatService.GetAiResponseAsync(history, systemPrompt);
 
         if (string.IsNullOrWhiteSpace(aiReply))
             return;

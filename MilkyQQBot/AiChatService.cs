@@ -11,12 +11,12 @@ public static class AiChatService
     private static string ApiKey => AppConfig.Current.Ai.Chat.ApiKey;
     private static string ModelName => AppConfig.Current.Ai.Chat.Model;
 
-    public static async Task<string> GetAiResponseAsync(List<string> chatHistory)
-    {
-        if (chatHistory == null || chatHistory.Count == 0) return null;
-
-        // 你的暴躁老哥预设 Prompt
-        var systemPrompt = @"# Role: 真实群聊乐子人 (贴吧老哥)
+    /// <summary>
+    /// 默认 system prompt。
+    /// 这是旧版逻辑里写死的人设，现在抽出来作为“默认人格”。
+    /// 如果外部没有传入自定义人格 prompt，就继续使用这一套。
+    /// </summary>
+    private static readonly string DefaultSystemPrompt = @"# Role: 真实群聊乐子人 (贴吧老哥)
 ## 人物画像: 
 1、你是一个天天抱着手机高强度水群、逛贴吧的无业游民/大学生。你极其没有耐心，极其懒惰。
 2、你平时说话绝不会长篇大论，通常只有几个字到十几个字，经常连标点符号都不打。
@@ -49,10 +49,43 @@ public static class AiChatService
 **阅读聊天记录，像个真正的人类一样，随手发送一条消息，发泄你的情绪或进行嘲讽。**
 **切记：句末绝对不打句号！越敷衍、越暴躁越像真人！绝对不准使用括号！**";
 
-        // 将 List 拼装成一整段带有换行的文本
+    /// <summary>
+    /// 旧接口：保持兼容。
+    /// 如果外部没有传自定义人格 prompt，就使用默认人格。
+    /// </summary>
+    public static Task<string?> GetAiResponseAsync(List<string> chatHistory)
+    {
+        return GetAiResponseInternalAsync(chatHistory, DefaultSystemPrompt);
+    }
+
+    /// <summary>
+    /// 新接口：允许外部传入自定义 system prompt。
+    /// 以后你在 ChatAiEntry 里构造不同人格时，就调用这个重载。
+    /// </summary>
+    public static Task<string?> GetAiResponseAsync(List<string> chatHistory, string systemPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            systemPrompt = DefaultSystemPrompt;
+        }
+
+        return GetAiResponseInternalAsync(chatHistory, systemPrompt);
+    }
+
+    /// <summary>
+    /// 真正执行 AI 请求的内部方法。
+    /// 所有对外入口最终都走这里，避免重复代码。
+    /// </summary>
+    private static async Task<string?> GetAiResponseInternalAsync(List<string> chatHistory, string systemPrompt)
+    {
+        if (chatHistory == null || chatHistory.Count == 0)
+            return null;
+
+        // 将聊天历史拼接成一整段文本
+        // 这里仍然沿用你当前的接口格式，避免影响现有调用链路
         string historyText = string.Join("\n", chatHistory);
 
-        // 构建标准 OpenAI 格式的请求载荷
+        // 构建标准 OpenAI 兼容格式请求体
         var payload = new
         {
             model = ModelName,
@@ -64,7 +97,7 @@ public static class AiChatService
         };
 
         var jsonPayload = JsonSerializer.Serialize(payload);
-        var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, ApiUrl);
         request.Headers.Add("Authorization", $"Bearer {ApiKey}");
@@ -75,17 +108,20 @@ public static class AiChatService
             var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
-            var responseString = await response.Content.ReadAsStringAsync();
+            string responseString = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(responseString);
-            
+
             // 提取 choices[0].message.content
-            string replyText = doc.RootElement
+            string? replyText = doc.RootElement
                 .GetProperty("choices")[0]
                 .GetProperty("message")
                 .GetProperty("content")
                 .GetString();
 
-            return replyText;
+            if (string.IsNullOrWhiteSpace(replyText))
+                return null;
+
+            return replyText.Trim();
         }
         catch (Exception ex)
         {
